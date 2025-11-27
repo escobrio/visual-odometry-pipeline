@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# Conda / virtualenvs
+.env/
+venv/
+.venv/
+env/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Data
+data/
+!data/README.md
+
+# OS
+.DS_Store
+Thumbs.db
