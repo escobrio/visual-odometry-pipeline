@@ -17,5 +17,9 @@ conda env create -f environment.yml # creat env
 conda conda env update -f environment.yml --prune # update env after change
 ```
 
-### 2. Change the environment
+#### 1.2 Change the environment
 If you want to add packages, do so in `requirements.txt`. For now they are the requirements from the exercises.
+
+
+### 2. Workflow
+Put the actual lode into seperate file in `src`, run all of this from jupiter notebooks in `notebooks`.

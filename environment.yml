@@ -1,6 +1,10 @@
 name: va_project
-channels: [conda-forge]
+channels: 
+  - conda-forge
+  - defaults
 dependencies:
   - python=3.10
+  - ipykernel
   - pip:
       - "-r requirements.txt"
+      - -e .
