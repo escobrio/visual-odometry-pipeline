@@ -8,9 +8,15 @@ ds = 2  # 0: KITTI, 1: Malaga, 2: Parking, 3: Own Dataset
 
 # Define dataset paths
 # (Set these variables before running)
-# kitti_path = "/path/to/kitti"
-# malaga_path = "/path/to/malaga"
-# parking_path = "/path/to/parking"
+file_path = os.path.dirname(os.path.abspath(__file__))
+relative_kitti = "../data/provided_data/kitti05"
+relative_malaga = "../data/provided_data/malaga-urban-dataset-extract-07"
+relative_parking = "../data/provided_data/parking"
+
+kitti_path = os.path.join(file_path, relative_kitti)
+malaga_path = os.path.join(file_path, relative_malaga)
+parking_path = os.path.join(file_path, relative_parking)
+
 # own_dataset_path = "/path/to/own_dataset"
 
 if ds == 0:
