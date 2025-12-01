@@ -62,6 +62,9 @@ def add_new_landmarks(S, image, image_next, K, global_camera_poses):
     Output:
         updated_state: State with new landmarks and candidates added
     '''
+    # TODO: Investigate further on the dynamics regarding new keypoints and candidates
+    # TODO could be cleaned up more
+
     # Track candidate keypoints between frames using KLT
     candidates_next, status_cand, error_cand = cv2.calcOpticalFlowPyrLK(
                                                 prevImg = image,
