@@ -43,8 +43,9 @@ def RANSAC_P3P(P, P_next, K):
 
     # Recover R and t from F using cv2.recoverPose
     if F is not None and np.count_nonzero(inlier_mask_cv) >= 4:
+        E = K.T @ F @ K  # Essential matrix
         _, R_C_W, t_C_W, inlier_mask_recover = cv2.recoverPose(
-            F, 
+            E, 
             P, 
             P_next, 
             cameraMatrix=K

@@ -3,11 +3,12 @@ import cv2
 
 from va_functions.triangulation import triangulate_new_landmarks
 
-def detect_new_candidate_keypoints(image, existing_keypoints, num_candidates, num_current_candidates=0):
+def detect_new_candidate_keypoints(image, existing_keypoints, existing_candidates, num_candidates, num_current_candidates=0):
     '''Detect new candidate keypoints in the current frame that are not redundant with existing keypoints.
     Input:
         image: Current image frame
         existing_keypoints: 2D keypoints already in use
+        existing_candidates: 2D candidate keypoints already in use
         num_candidates: Number of new candidate keypoints to detect
     Output:
         new_candidates: Detected new candidate keypoints
@@ -38,6 +39,13 @@ def detect_new_candidate_keypoints(image, existing_keypoints, num_candidates, nu
     else:
         filtered_keypoints = detected_keypoints
 
+    if existing_candidates.shape[0] > 0:
+        dists_cand = np.linalg.norm(filtered_keypoints[:, np.newaxis, :] - existing_candidates[np.newaxis, :, :], axis=2)
+        min_dists_cand = np.min(dists_cand, axis=1)
+        filtered_keypoints = filtered_keypoints[min_dists_cand > min_distance]
+    else:
+        filtered_keypoints = filtered_keypoints
+
     # Select the required number of new candidates
     new_candidates = filtered_keypoints[:num_candidates]
 
@@ -63,9 +71,10 @@ def add_new_landmarks(S, image, image_next, K, global_camera_poses):
 
 
     # update, and prune candidates, that have been failed to track
-    S["C"] = candidates_next[status_cand.flatten() == 1]
-    S["F"] = S["F"][status_cand.flatten() == 1]
-    S["T"] = S["T"][status_cand.flatten() == 1]
+    if status_cand is not None:
+        S["C"] = candidates_next[status_cand.flatten() == 1]
+        S["F"] = S["F"][status_cand.flatten() == 1]
+        S["T"] = S["T"][status_cand.flatten() == 1]
 
     # --- Decide based on angle change, which candidates to convert to keypoints and landmarks --
     # Parameters
@@ -99,6 +108,22 @@ def add_new_landmarks(S, image, image_next, K, global_camera_poses):
 
     candidates_to_add_mask = bearing_angle > angle_threshold
 
+    # Get ordered indicess for the best candidates to add (size based on angle)
+    ordered_indices = np.argsort(bearing_angle[candidates_to_add_mask])[::-1]
+    candidates_to_add = candidates_to_add_mask[candidates_to_add_mask][ordered_indices]
+    num_candidates_available = candidates_to_add.shape[0]
+
+    # Limit the number of total keypoints tracked
+    max_keypoints = 1000  # TODO put in parameter config
+    num_keypoints_current = S["P"].shape[0]
+    
+    num_keypoints_to_add = min(num_candidates_available, max_keypoints - num_keypoints_current)
+    num_keypoints_to_add = max(num_keypoints_to_add, 0)
+
+    # Final mask of candidates to add
+    final_candidates_to_add_mask = np.zeros_like(candidates_to_add_mask, dtype=bool)
+    final_candidates_to_add_mask[np.where(candidates_to_add_mask)[0][ordered_indices[:num_keypoints_to_add]]] = True
+    candidates_to_add_mask = final_candidates_to_add_mask
 
     # Add selected candidates to keypoints and landmarks
     new_keypoints = S["C"][candidates_to_add_mask]
@@ -122,16 +147,24 @@ def add_new_landmarks(S, image, image_next, K, global_camera_poses):
     # Choose how many new candidates are needed
     # TODO: check if we can have a good heuristic for this
     num_converted_candidates = np.count_nonzero(candidates_to_add_mask)
-    num_lost_candidates = np.count_nonzero(~status_cand.flatten())
+    if status_cand is None:
+        num_lost_candidates = 0
+    else:
+        num_lost_candidates = np.count_nonzero(~status_cand.flatten())
+
+    min_candidates_needed = 20 # TODO put in parameter config
+    max_new_candidates = 50 # TODO put in parameter config
 
     num_new_candidates_needed = int((num_converted_candidates + num_lost_candidates) * 1.5)
 
+    num_new_candidates_needed = max(num_new_candidates_needed, min_candidates_needed)
+    num_new_candidates_needed = min(num_new_candidates_needed, max_new_candidates)
 
-
-    # Detect new candidate keypoints in the current frame, that are not redundant with existing keypoints
+    # Detect new candidate keypoints in the current frame, that are not redundant with existing keypoints, or candidates
     new_candidate_keypoints = detect_new_candidate_keypoints(
         image=image_next,
         existing_keypoints=S["P"],
+        existing_candidates=S["C"],
         num_candidates=num_new_candidates_needed,
         num_current_candidates=S["C"].shape[0]
     )
@@ -141,4 +174,14 @@ def add_new_landmarks(S, image, image_next, K, global_camera_poses):
     S["F"] = np.vstack((S["F"], new_candidate_keypoints))
     S["T"] = np.vstack((S["T"], np.repeat(current_camera_pose[np.newaxis, :, :], new_candidate_keypoints.shape[0], axis=0)))
 
-    return S
+    
+    info = {
+        "num_new_keypoints": new_keypoints.shape[0],
+        "num_new_landmarks": new_landmarks.shape[0],
+        "num_lost_candidates": num_lost_candidates,
+        "num_new_candidates_detected": new_candidate_keypoints.shape[0],
+        "num_new_candidates_needed": num_new_candidates_needed
+    }
+
+
+    return S, new_landmarks, info
