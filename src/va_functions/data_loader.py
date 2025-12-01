@@ -14,13 +14,11 @@ def load_dataset(ds):
     '''
     # --- Define Paths ---
     file_path = os.path.dirname(os.path.abspath(__file__))
-    relative_kitti = "../data/provided_data/kitti05"
-    relative_malaga = "../data/provided_data/malaga-urban-dataset-extract-07"
-    relative_parking = "../data/provided_data/parking"
-
-    kitti_path = os.path.join(file_path, relative_kitti)
-    malaga_path = os.path.join(file_path, relative_malaga)
-    parking_path = os.path.join(file_path, relative_parking)
+    # Projekt-Root zwei Ebenen oberhalb dieses Files
+    project_root = os.path.abspath(os.path.join(file_path, '..', '..'))
+    kitti_path = os.path.join(project_root, 'data', 'provided_data', 'kitti05')
+    malaga_path = os.path.join(project_root, 'data', 'provided_data', 'malaga-urban-dataset-extract-07')
+    parking_path = os.path.join(project_root, 'data', 'provided_data', 'parking')
 
     # --- Dataset selection ---
     if ds == 0:
@@ -44,7 +42,15 @@ def load_dataset(ds):
     elif ds == 2:
         assert 'parking_path' in locals(), "You must define parking_path"
         last_frame = 598
-        K = np.loadtxt(os.path.join(parking_path, 'K.txt'))
+        #K = np.loadtxt(os.path.join(parking_path, 'K.txt'))
+        left_images = sorted(glob(os.path.join(parking_path, 'images', '*.png')))
+        
+        K = np.array([
+            [331.37, 0,       320],
+            [0,      369.568, 240],
+            [0,      0,       1]
+        ])
+        
         ground_truth = np.loadtxt(os.path.join(parking_path, 'poses.txt'))
         ground_truth = ground_truth[:, [-9, -1]]
     elif ds == 3:
