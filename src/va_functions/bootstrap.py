@@ -1,6 +1,9 @@
 import numpy as np
 import cv2
 
+# TODO:Check if all the shapes are correct, especially in select_keypoint_correspondence
+# There the output is 3 dimenional, but reshaped to 2D could be a source of error
+
 def initialize_visual_odometry(frames: list, all_images_path: list, K: np.ndarray) -> dict:
     '''Initialize visual odometry using certain amount of frames, the frame indices are given in `frames`.
     Inputs:
@@ -56,24 +59,30 @@ def select_keypoint_correspondence(images_list: list) -> list:
     # TODO: Das beispiel ist von der OpenCV homepase, ist das okee oder haben das dann ganz viele andere auch so?
     
     #---------Tuning parameters, currently from OpenCV example code ---------
-    feature_params = dict( maxCorners = 100,
-                       qualityLevel = 0.3,
-                       minDistance = 7,
-                       blockSize = 7 )
+    feature_params = dict( maxCorners = 100, qualityLevel = 0.3,
+                          minDistance = 7, blockSize = 7 )
     
-    lk_params = dict( winSize  = (15, 15),
-                  maxLevel = 2,
-                  criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 10, 0.03))
+    lk_params = dict(winSize = (15, 15), maxLevel = 2,
+                     criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 10, 0.03))
     
     point_frame_0 = cv2.goodFeaturesToTrack(images_list[0], mask = None, **feature_params)
+    points_previous_frame = point_frame_0.copy()
     
-    points_new_frame, st, err = cv2.calcOpticalFlowPyrLK(images_list[0], images_list[1], point_frame_0, None, **lk_params)
+    for frame_idx in range(1, len(images_list)):
+        points_frame_i, st, err = cv2.calcOpticalFlowPyrLK(images_list[frame_idx-1], images_list[frame_idx], points_previous_frame, None, **lk_params)
+        
+        point_mask = (st == 1).reshape(-1)
+        
+        points_previous_frame = points_frame_i[point_mask].reshape(-1,2)
+        point_frame_0 = point_frame_0[point_mask].reshape(-1,2)
     
-    tracked_points_frame_0 = point_frame_0[st==1]
-    tracked_points_new_frame = points_new_frame[st==1]
+    # points_new_frame, st, err = cv2.calcOpticalFlowPyrLK(images_list[0], images_list[1], point_frame_0, None, **lk_params)
+    
+    # tracked_points_frame_0 = point_frame_0[st==1]
+    # tracked_points_new_frame = points_new_frame[st==1]
     
     
-    keypoints_lsit_keyframes = [tracked_points_frame_0, tracked_points_new_frame]
+    keypoints_lsit_keyframes = [point_frame_0, points_frame_i[point_mask].reshape(-1,2)]
     
 
     return keypoints_lsit_keyframes
@@ -94,13 +103,15 @@ def calculate_final_relative_R_t(tracked_keypoints_list: list, K: np.ndarray) ->
     
     print("K:\n", K)
     
-    Fundemental_matrix, mask_fundemental = cv2.findFundamentalMat(tracked_keypoints_list[0], tracked_keypoints_list[1], cv2.FM_RANSAC)
-    E = K.T @ Fundemental_matrix @ K
+    F, mask_fundemental = cv2.findFundamentalMat(tracked_keypoints_list[0], tracked_keypoints_list[1], cv2.FM_RANSAC)
+    E = K.T @ F @ K
     
-    retval, R_Wi, W_t_Wi, mask_pose = cv2.recoverPose(E, tracked_keypoints_list[0], tracked_keypoints_list[1], K)
+    retval, R_Wi, W_t_Wi, mask_pose = cv2.recoverPose(E, tracked_keypoints_list[0], tracked_keypoints_list[1], K, mask=mask_fundemental)
     
-    points_in_pose_0 = tracked_keypoints_list[0][mask_pose.ravel()>0]
-    points_in_pose_i = tracked_keypoints_list[1][mask_pose.ravel()>0]
+    W_t_Wi = W_t_Wi.reshape(3, 1)
+    
+    points_in_pose_0 = tracked_keypoints_list[0][mask_pose.ravel() > 0]
+    points_in_pose_i = tracked_keypoints_list[1][mask_pose.ravel() > 0]
     
     M1 = K @ np.hstack((np.eye(3), np.zeros((3,1))))
     Mi = K @ np.hstack((R_Wi, W_t_Wi))
