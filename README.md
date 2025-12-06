@@ -14,7 +14,7 @@ mamba env update -f environment.yml --prune # update env after change
 **Using Conda:**
 ```bash
 conda env create -f environment.yml # creat env
-conda conda env update -f environment.yml --prune # update env after change
+conda env update -f environment.yml --prune # update env after change
 ```
 
 #### 1.2 Change the environment
