@@ -66,6 +66,8 @@ def initialize_visual_odometry(frames: list, all_images_path: list, K: np.ndarra
 
 def plot_3D_points_and_frames(R_Wi: np.ndarray, W_t_Wi: np.ndarray, W_landmarks_of_keypoints: np.ndarray):
     
+    #Lol x,y,z axes just get scaled differently in matplotlib 3D plots thats why the coordinate frames look weird
+    
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
     
@@ -94,17 +96,17 @@ def plot_3D_points_and_frames(R_Wi: np.ndarray, W_t_Wi: np.ndarray, W_landmarks_
     ez_i = (R_Wi @ np.array([0.0, 0.0, scale]))
 
     ax.quiver(origin_i[0], origin_i[1], origin_i[2],
-              ex_i[0], ex_i[1], ex_i[2], color='m', arrow_length_ratio=0.1)
+              ex_i[0], ex_i[1], ex_i[2], color='r', arrow_length_ratio=0.1)
     ax.quiver(origin_i[0], origin_i[1], origin_i[2],
-              ey_i[0], ey_i[1], ey_i[2], color='c', arrow_length_ratio=0.1)
+              ey_i[0], ey_i[1], ey_i[2], color='g', arrow_length_ratio=0.1)
     ax.quiver(origin_i[0], origin_i[1], origin_i[2],
-              ez_i[0], ez_i[1], ez_i[2], color='y', arrow_length_ratio=0.1)
-
+              ez_i[0], ez_i[1], ez_i[2], color='b', arrow_length_ratio=0.1)
 
     ax.set_xlabel('X')
     ax.set_ylabel('Y')
     ax.set_zlabel('Z')
     ax.legend()
+    ax.view_init(elev=-83, azim=-90)
     plt.show()
 
 def select_keypoint_correspondence(images_list: list, plot_tracked_points: bool = False) -> list:
@@ -122,6 +124,7 @@ def select_keypoint_correspondence(images_list: list, plot_tracked_points: bool 
     # TODO: Das beispiel ist von der OpenCV homepase, ist das okee oder haben das dann ganz viele andere auch so?
     
     #---------Tuning parameters, currently from OpenCV example code ---------
+    # TODO: bracuht man für den zweiten teil noch mehr landmarks ?
     feature_params = dict( maxCorners = 1000, qualityLevel = 0.001,
                           minDistance = 5, blockSize = 5 )
     
@@ -145,7 +148,7 @@ def select_keypoint_correspondence(images_list: list, plot_tracked_points: bool 
         point_frame_0 = point_frame_0[point_mask].reshape(-1,2)
         
         if plot_tracked_points:
-            #----------Debugging visualization ----------
+            #----------Debugging visualization ---------- (Keypoints in Image)
             image_frame_i = cv2.cvtColor(images_list[frame_idx], cv2.COLOR_GRAY2BGR)
             fig, ax = plt.subplots()
             ax.imshow(image_frame_i)
