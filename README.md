@@ -23,3 +23,11 @@ If you want to add packages, do so in `requirements.txt`. For now they are the r
 
 ### 2. Workflow
 Put the actual lode into seperate file in `src`, run all of this from jupiter notebooks in `notebooks`.
+
+
+### 3. TODO's
+
+- bridge part I & II --> change initialization of part II depending on results of part I
+- make parameter file, that contains all parameters 
+- Build a visualization 
+- How to improve the slame pipline (remove local jitter)
