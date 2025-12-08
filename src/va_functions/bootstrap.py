@@ -56,8 +56,8 @@ def initialize_visual_odometry(frames: list, all_images_path: list, K: np.ndarra
     
     
     return_dictionary = {
-        'R_iW': R_iW,
-        'i_t_iW': i_t_iW,
+        'R_Wi': R_Wi,
+        'W_t_Wi': W_t_Wi,
         'matched_keypoints': matched_keypoints,
         'W_landmarks_of_keypoints': W_landmarks_of_keypoints
     }
@@ -76,6 +76,18 @@ def plot_3D_points_and_frames(R_Wi: np.ndarray, W_t_Wi: np.ndarray, W_landmarks_
     
     ax.scatter(W_landmarks_of_keypoints[:, 0], W_landmarks_of_keypoints[:, 1], W_landmarks_of_keypoints[:, 2], c='g', marker='.', label='3D Landmarks')
     
+    
+    #Set same axis scaling for all axis
+    mins = np.min(W_landmarks_of_keypoints, axis=0)
+    maxs = np.max(W_landmarks_of_keypoints, axis=0)
+    max_range = np.max(maxs - mins)
+    
+    mid = (maxs + mins) / 2.0
+    half = max_range / 2.0
+    
+    ax.set_xlim(mid[0] - half, mid[0] + half)
+    ax.set_ylim(mid[1] - half, mid[1] + half)
+    ax.set_zlim(mid[2] - half, mid[2] + half)
    
     try:
         ext = np.ptp(W_landmarks_of_keypoints, axis=0)  # peak-to-peak per axis
@@ -175,7 +187,7 @@ def calculate_final_relative_R_t(tracked_keypoints_list: list, K: np.ndarray) ->
     returns: R_iW, i_t_iW, matched_keypoints, W_landmarks_of_keypoints
     '''
     
-    # TODO: das nicht auch anders machbar ?
+    # Make sure they are all in float, needed for OpenCV
     points_frame_0 = tracked_keypoints_list[0].astype(np.float32)
     points_frame_i = tracked_keypoints_list[1].astype(np.float32)
     
