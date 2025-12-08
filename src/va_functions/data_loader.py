@@ -14,13 +14,11 @@ def load_dataset(ds):
     '''
     # --- Define Paths ---
     file_path = os.path.dirname(os.path.abspath(__file__))
-    relative_kitti = "../data/provided_data/kitti05"
-    relative_malaga = "../data/provided_data/malaga-urban-dataset-extract-07"
-    relative_parking = "../data/provided_data/parking"
-
-    kitti_path = os.path.join(file_path, relative_kitti)
-    malaga_path = os.path.join(file_path, relative_malaga)
-    parking_path = os.path.join(file_path, relative_parking)
+    # Projekt-Root zwei Ebenen oberhalb dieses Files
+    project_root = os.path.abspath(os.path.join(file_path, '..', '..'))
+    kitti_path = os.path.join(project_root, 'data', 'provided_data', 'kitti05', 'kitti')
+    malaga_path = os.path.join(project_root, 'data', 'malaga-urban-dataset-extract-07')
+    parking_path = os.path.join(project_root, 'data', 'provided_data', 'parking')
 
     # --- Dataset selection ---
     if ds == 0:
@@ -33,8 +31,8 @@ def load_dataset(ds):
             [0, 0, 1]
         ])
     elif ds == 1:
-        assert 'img_dir' in locals(), "You must define img_dir"
-        left_images = sorted(glob(os.path.join(img_dir, '*.png')))
+        assert 'malaga_path' in locals(), "You must define malaga_path"
+        left_images = sorted(glob(os.path.join(malaga_path, 'malaga-urban-dataset-extract-07_rectified_800x600_Images' , '*.jpg')))
         last_frame = len(left_images)
         K = np.array([
             [621.18428, 0, 404.0076],
@@ -44,7 +42,11 @@ def load_dataset(ds):
     elif ds == 2:
         assert 'parking_path' in locals(), "You must define parking_path"
         last_frame = 598
-        K = np.loadtxt(os.path.join(parking_path, 'K.txt'))
+        K_path = os.path.join(parking_path, 'K.txt')
+        with open(K_path, 'r') as f:
+            K_lines = [line.strip().rstrip(',').split(',') for line in f.readlines()]
+        K = np.array([[float(val.strip()) for val in row] for row in K_lines])
+        left_images = sorted(glob(os.path.join(parking_path, 'images', '*.png')))
         ground_truth = np.loadtxt(os.path.join(parking_path, 'poses.txt'))
         ground_truth = ground_truth[:, [-9, -1]]
     elif ds == 3:
