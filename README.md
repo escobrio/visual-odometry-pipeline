@@ -22,7 +22,7 @@ If you want to add packages, do so in `requirements.txt`. For now they are the r
 
 
 ### 2. Workflow
-Put the actual lode into seperate file in `src`, run all of this from jupiter notebooks in `notebooks`.
+Put the actual code into seperate file in `src`, run all of this from jupiter notebooks in `notebooks`.
 
 
 ### 3. TODO's
