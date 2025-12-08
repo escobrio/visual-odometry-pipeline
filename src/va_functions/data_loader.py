@@ -16,8 +16,8 @@ def load_dataset(ds):
     file_path = os.path.dirname(os.path.abspath(__file__))
     # Projekt-Root zwei Ebenen oberhalb dieses Files
     project_root = os.path.abspath(os.path.join(file_path, '..', '..'))
-    kitti_path = os.path.join(project_root, 'data', 'provided_data', 'kitti05')
-    malaga_path = os.path.join(project_root, 'data', 'provided_data', 'malaga-urban-dataset-extract-07')
+    kitti_path = os.path.join(project_root, 'data', 'provided_data', 'kitti')
+    malaga_path = os.path.join(project_root, 'data', 'malaga-urban-dataset-extract-07')
     parking_path = os.path.join(project_root, 'data', 'provided_data', 'parking')
 
     # --- Dataset selection ---
@@ -31,8 +31,8 @@ def load_dataset(ds):
             [0, 0, 1]
         ])
     elif ds == 1:
-        assert 'img_dir' in locals(), "You must define img_dir"
-        left_images = sorted(glob(os.path.join(img_dir, '*.png')))
+        assert 'malaga_path' in locals(), "You must define malaga_path"
+        left_images = sorted(glob(os.path.join(malaga_path, 'malaga-urban-dataset-extract-07_rectified_800x600_Images' , '*.jpg')))
         last_frame = len(left_images)
         K = np.array([
             [621.18428, 0, 404.0076],

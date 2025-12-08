@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 # There the output is 3 dimenional, but reshaped to 2D could be a source of error
 # So wie einmal in den aufgaben, dass x & y vertausch sind könnte vlt. auch ein problem werden.
 
-def initialize_visual_odometry(frames: list, all_images_path: list, K: np.ndarray, plot_tracked_points: bool = False) -> dict:
+def initialize_visual_odometry(frames: list, all_images_path: list, K: np.ndarray, plot_tracked_points: bool = False, dataset_id: int = -1) -> dict:
     '''Initialize visual odometry using certain amount of frames, the frame indices are given in `frames`.
     Inputs:
         frames: list of the used imaged indices used for calibration (only the transformation between the first and last will be returned)
@@ -32,6 +32,9 @@ def initialize_visual_odometry(frames: list, all_images_path: list, K: np.ndarra
     # matched_keypoints = []
     # W_landmarks_of_keypoints = []
     
+    if dataset_id == -1:
+        raise ValueError("dataset_id must be given to initialize_visual_odometry function for initialization.")
+    
     plt.ion()
     
     calibration_images = []
@@ -43,7 +46,7 @@ def initialize_visual_odometry(frames: list, all_images_path: list, K: np.ndarra
         
     #print("calibration images\n", calibration_images)
     
-    tracked_keypoints_list = select_keypoint_correspondence(calibration_images, plot_tracked_points)
+    tracked_keypoints_list = select_keypoint_correspondence(calibration_images, plot_tracked_points, dataset_id)
     
     
     R_iW, i_t_iW, matched_keypoints, W_landmarks_of_keypoints = calculate_final_relative_R_t(tracked_keypoints_list, K)
@@ -121,7 +124,7 @@ def plot_3D_points_and_frames(R_Wi: np.ndarray, W_t_Wi: np.ndarray, W_landmarks_
     ax.view_init(elev=-83, azim=-90)
     plt.show()
 
-def select_keypoint_correspondence(images_list: list, plot_tracked_points: bool = False) -> list:
+def select_keypoint_correspondence(images_list: list, plot_tracked_points: bool = False, dataset_id: int = -1) -> list:
     '''Select keypoint correspondences between two images.
     Inputs:
         images_list: list of np.ndarray, list containing all to be used images
@@ -137,11 +140,30 @@ def select_keypoint_correspondence(images_list: list, plot_tracked_points: bool 
     
     #---------Tuning parameters, currently from OpenCV example code ---------
     # TODO: bracuht man für den zweiten teil noch mehr landmarks ?
-    feature_params = dict( maxCorners = 1000, qualityLevel = 0.001,
-                          minDistance = 5, blockSize = 5 )
     
-    lk_params = dict(winSize = (15, 15), maxLevel = 3,
-                     criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 10, 0.03))
+    match dataset_id:
+        case 0: # KITTI
+            feature_params = dict( maxCorners = 1000, qualityLevel = 0.1,
+                                   minDistance = 6, blockSize = 6 )
+            
+            lk_params = dict(winSize = (15, 15), maxLevel = 3,
+                             criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 10, 0.03))
+            
+        case 1: # Malaga
+            feature_params = dict( maxCorners = 1000, qualityLevel = 0.001,
+                                   minDistance = 5, blockSize = 5 )
+            
+            lk_params = dict(winSize = (15, 15), maxLevel = 3,
+                             criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 10, 0.03))  
+            
+        case 2: # Parking
+            feature_params = dict( maxCorners = 1000, qualityLevel = 0.001,
+                                   minDistance = 5, blockSize = 5 )
+            
+            lk_params = dict(winSize = (15, 15), maxLevel = 3,
+                             criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 10, 0.03))
+        
+    
     
     point_frame_0 = cv2.goodFeaturesToTrack(images_list[0], mask = None, **feature_params)
     points_previous_frame = point_frame_0.copy()
