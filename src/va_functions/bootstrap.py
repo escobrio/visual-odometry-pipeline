@@ -2,6 +2,7 @@ import numpy as np
 import cv2
 import matplotlib
 
+# I somehow had problems of displaying images with Matlotlib in WSL2, this is a workaround
 try:
     matplotlib.use('TkAgg') 
 except:
@@ -9,9 +10,6 @@ except:
 
 import matplotlib.pyplot as plt
 
-# TODO:Check if all the shapes are correct, especially in select_keypoint_correspondence
-# There the output is 3 dimenional, but reshaped to 2D could be a source of error
-# So wie einmal in den aufgaben, dass x & y vertausch sind könnte vlt. auch ein problem werden.
 
 def initialize_visual_odometry(frames: list, all_images_path: list, K: np.ndarray, plot_tracked_points: bool = False, dataset_id: int = -1) -> dict:
     '''Initialize visual odometry using certain amount of frames, the frame indices are given in `frames`.
@@ -27,10 +25,6 @@ def initialize_visual_odometry(frames: list, all_images_path: list, K: np.ndarra
             'W_landmarks_of_keypoints': list of np.ndarray, 3D landmarks corresponding to the matched keypoints
     '''
     
-    # R_Wi = np.eye(3)
-    # W_t_Wi = np.zeros((3, 1))
-    # matched_keypoints = []
-    # W_landmarks_of_keypoints = []
     
     if dataset_id == -1:
         raise ValueError("dataset_id must be given to initialize_visual_odometry function for initialization.")
@@ -44,7 +38,6 @@ def initialize_visual_odometry(frames: list, all_images_path: list, K: np.ndarra
         image = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
         calibration_images.append(image)
         
-    #print("calibration images\n", calibration_images)
     
     tracked_keypoints_list = select_keypoint_correspondence(calibration_images, plot_tracked_points, dataset_id)
     
@@ -133,14 +126,13 @@ def select_keypoint_correspondence(images_list: list, plot_tracked_points: bool 
         keypoints2: np.ndarray, corresponding keypoints in the second image
     '''
     
-    # TODO: Hier noch die richtigen dimensionen und so reshapen
-    
-    # Lets first implement it for only two frames used
     # TODO: Das beispiel ist von der OpenCV homepase, ist das okee oder haben das dann ganz viele andere auch so?
     
-    #---------Tuning parameters, currently from OpenCV example code ---------
+    
     # TODO: bracuht man für den zweiten teil noch mehr landmarks ?
     
+    
+    #---------Tuning parameters, startpoint from OpenCV example code ---------
     match dataset_id:
         case 0: # KITTI
             feature_params = dict( maxCorners = 1000, qualityLevel = 0.1,
