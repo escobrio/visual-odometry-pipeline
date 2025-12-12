@@ -1,0 +1,52 @@
+dataset:
+  id: 2  # 0: KTTI, 1: Malaga, 2: Parking, 3: own_datasets
+  n_frames: 100
+
+pipeline:
+  visualization: true
+  print_info: true
+  plot_tracked_points: true
+  fraction_of_features_as_candidates: 0.1
+
+initialization_part1:
+  frames: [0, 1, 2, 3]
+
+
+initialization_part2:
+  fraction_of_features_as_candidates: 0.1
+  auto_swap_xy_if_y_gt_x: true
+
+bootstrap:
+  fundamental:
+    reprojection_threshold: 3.0
+    probability_all_inliers: 0.99
+
+  features_by_dataset:
+    "0": { maxCorners: 1000, qualityLevel: 0.1,   minDistance: 6, blockSize: 6 }
+    "1": { maxCorners: 1000, qualityLevel: 0.001, minDistance: 5, blockSize: 5 }
+    "2": { maxCorners: 1000, qualityLevel: 0.001, minDistance: 5, blockSize: 5 }
+
+  lk:
+    winSize: [15, 15]
+    maxLevel: 3
+    criteria:
+      type: "EPS|COUNT"
+      maxCount: 10
+      epsilon: 0.03
+
+pose:
+  ransac:
+    max_pix_displacement: 8.0
+    confidence: 0.99
+    max_iterations: 1000
+
+candidates:
+  angle_threshold_deg: 10.0
+  max_keypoints: 1000
+  min_candidates_needed: 20
+  max_new_candidates: 50
+
+new_candidates:
+  quality_level: 0.01
+  min_distance: 10
+  oversample_factor: 1.5

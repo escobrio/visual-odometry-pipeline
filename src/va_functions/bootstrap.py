@@ -1,9 +1,10 @@
 import numpy as np
 import cv2
 import matplotlib.pyplot as plt
+from typing import Any, Dict, Optional
 
 
-def initialize_visual_odometry(frames: list, all_images_path: list, K: np.ndarray, plot_tracked_points: bool = False, dataset_id: int = -1) -> dict:
+def initialize_visual_odometry(frames: list, all_images_path: list, K: np.ndarray, plot_tracked_points: bool = False, dataset_id: int = -1, cfg: Optional[Dict[str, Any]] = None) -> dict:
     '''Initialize visual odometry using certain amount of frames, the frame indices are given in `frames`.
     Inputs:
         frames: list of the used imaged indices used for calibration (only the transformation between the first and last will be returned)
@@ -31,10 +32,10 @@ def initialize_visual_odometry(frames: list, all_images_path: list, K: np.ndarra
         calibration_images.append(image)
         
     
-    tracked_keypoints_list = select_keypoint_correspondence(calibration_images, plot_tracked_points, dataset_id)
+    tracked_keypoints_list = select_keypoint_correspondence(calibration_images, plot_tracked_points=plot_tracked_points, dataset_id=dataset_id, cfg=cfg)
     
     
-    R_iW, i_t_iW, matched_keypoints, W_landmarks_of_keypoints = calculate_final_relative_R_t(tracked_keypoints_list, K)
+    R_iW, i_t_iW, matched_keypoints, W_landmarks_of_keypoints = calculate_final_relative_R_t(tracked_keypoints_list, K, cfg=cfg)
     
     R_Wi = R_iW.T
     W_t_Wi = -R_Wi @ i_t_iW
@@ -109,7 +110,7 @@ def plot_3D_points_and_frames(R_Wi: np.ndarray, W_t_Wi: np.ndarray, W_landmarks_
     ax.view_init(elev=-83, azim=-90)
     plt.show()
 
-def select_keypoint_correspondence(images_list: list, plot_tracked_points: bool = False, dataset_id: int = -1) -> list:
+def select_keypoint_correspondence(images_list: list, plot_tracked_points: bool = False, dataset_id: int = -1, cfg=None) -> list:
     '''Select keypoint correspondences between two images.
     Inputs:
         images_list: list of np.ndarray, list containing all to be used images
@@ -119,30 +120,51 @@ def select_keypoint_correspondence(images_list: list, plot_tracked_points: bool 
     '''
     
     # TODO: bracuht man für den zweiten teil noch mehr landmarks ?
+
+    feat = cfg["bootstrap"]["features_by_dataset"][str(dataset_id)]
+    lk_cfg = cfg["bootstrap"]["lk"]
+    crit_type = lk_cfg["criteria"]["type"]
+    term = 0
+    if "EPS" in crit_type:   term |= cv2.TERM_CRITERIA_EPS
+    if "COUNT" in crit_type: term |= cv2.TERM_CRITERIA_COUNT
+    criteria = (term, lk_cfg["criteria"]["maxCount"], lk_cfg["criteria"]["epsilon"])
+
+    feature_params = dict(
+        maxCorners=feat["maxCorners"],
+        qualityLevel=feat["qualityLevel"],
+        minDistance=feat["minDistance"],
+        blockSize=feat["blockSize"],
+    )
+
+    lk_params = dict(
+        winSize=tuple(lk_cfg["winSize"]),
+        maxLevel=lk_cfg["maxLevel"],
+        criteria=criteria,
+)
     
     
-    #---------Tuning parameters, startpoint from OpenCV example code ---------
-    match dataset_id:
-        case 0: # KITTI
-            feature_params = dict( maxCorners = 1000, qualityLevel = 0.1,
-                                   minDistance = 6, blockSize = 6 )
+    # #---------Tuning parameters, startpoint from OpenCV example code ---------
+    # match dataset_id:
+    #     case 0: # KITTI
+    #         feature_params = dict( maxCorners = 1000, qualityLevel = 0.1,
+    #                                minDistance = 6, blockSize = 6 )
             
-            lk_params = dict(winSize = (15, 15), maxLevel = 3,
-                             criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 10, 0.03))
+    #         lk_params = dict(winSize = (15, 15), maxLevel = 3,
+    #                          criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 10, 0.03))
             
-        case 1: # Malaga
-            feature_params = dict( maxCorners = 1000, qualityLevel = 0.001,
-                                   minDistance = 5, blockSize = 5 )
+    #     case 1: # Malaga
+    #         feature_params = dict( maxCorners = 1000, qualityLevel = 0.001,
+    #                                minDistance = 5, blockSize = 5 )
             
-            lk_params = dict(winSize = (15, 15), maxLevel = 3,
-                             criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 10, 0.03))  
+    #         lk_params = dict(winSize = (15, 15), maxLevel = 3,
+    #                          criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 10, 0.03))  
             
-        case 2: # Parking
-            feature_params = dict( maxCorners = 1000, qualityLevel = 0.001,
-                                   minDistance = 5, blockSize = 5 )
+    #     case 2: # Parking
+    #         feature_params = dict( maxCorners = 1000, qualityLevel = 0.001,
+    #                                minDistance = 5, blockSize = 5 )
             
-            lk_params = dict(winSize = (15, 15), maxLevel = 3,
-                             criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 10, 0.03))
+    #         lk_params = dict(winSize = (15, 15), maxLevel = 3,
+    #                          criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 10, 0.03))
         
     
     
@@ -185,7 +207,7 @@ def select_keypoint_correspondence(images_list: list, plot_tracked_points: bool 
 
 
 
-def calculate_final_relative_R_t(tracked_keypoints_list: list, K: np.ndarray) -> tuple[np.ndarray, np.ndarray, list, list]:
+def calculate_final_relative_R_t(tracked_keypoints_list: list, K: np.ndarray, cfg=None) -> tuple[np.ndarray, np.ndarray, list, list]:
     '''#TODO: Funktionbeschriebung
     returns: R_iW, i_t_iW, matched_keypoints, W_landmarks_of_keypoints
     '''
@@ -195,10 +217,11 @@ def calculate_final_relative_R_t(tracked_keypoints_list: list, K: np.ndarray) ->
     points_frame_i = tracked_keypoints_list[1].astype(np.float32)
     
     
-    # ----------Tuning parameters ---------- currently default values
-    reprojection_threshold = 3.0
-    probability_all_inliers = 0.99
+    # ----------Tuning parameters ----------
+    reprojection_threshold = cfg["bootstrap"]["fundamental"]["reprojection_threshold"]
+    probability_all_inliers = cfg["bootstrap"]["fundamental"]["probability_all_inliers"]
     
+
     num_correspondences_before = len(points_frame_0)
     
     
