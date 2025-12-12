@@ -6,7 +6,6 @@ pipeline:
   visualization: true
   print_info: true
   plot_tracked_points: true
-  fraction_of_features_as_candidates: 0.1
 
 initialization_part1:
   frames: [0, 1, 2, 3]
@@ -40,11 +39,22 @@ pose:
     confidence: 0.99
     max_iterations: 1000
 
+vo:
+  lk:
+    winSize: [15, 15]
+    maxLevel: 3
+    criteria:
+      type: "EPS|COUNT"
+      maxCount: 10
+      epsilon: 0.03
+
+
 candidates:
   angle_threshold_deg: 10.0
   max_keypoints: 1000
   min_candidates_needed: 20
   max_new_candidates: 50
+  need_multiplier: 1.5
 
 new_candidates:
   quality_level: 0.01

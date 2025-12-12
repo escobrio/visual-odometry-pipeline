@@ -1,9 +1,11 @@
 import numpy as np
 import cv2
+from typing import Any, Dict, Optional
+
 
 from va_functions.triangulation import triangulate_new_landmarks
 
-def detect_new_candidate_keypoints(image, existing_keypoints, existing_candidates, num_candidates, num_current_candidates=0):
+def detect_new_candidate_keypoints(image, existing_keypoints, existing_candidates, num_candidates, num_current_candidates=0, cfg: Optional[Dict[str, Any]] = None):
     '''Detect new candidate keypoints in the current frame that are not redundant with existing keypoints.
     Input:
         image: Current image frame
@@ -14,9 +16,17 @@ def detect_new_candidate_keypoints(image, existing_keypoints, existing_candidate
         new_candidates: Detected new candidate keypoints
     '''
     # Use cv2.goodFeaturesToTrack to detect new keypoints
-    max_corners = int((num_candidates + num_current_candidates) * 1.5)  # Detect more to account for filtering
-    quality_level = 0.01
-    min_distance = 10  # pixels
+    # max_corners = int((num_candidates + num_current_candidates) * 1.5)  # Detect more to account for filtering
+    # quality_level = 0.01
+    # min_distance = 10  # pixels
+
+    params = (cfg or {}).get("new_candidates", {})
+    oversample = params.get("oversample_factor", 1.5)
+    quality_level = params.get("quality_level", 0.01)
+    min_distance = params.get("min_distance", 10)
+
+    max_corners = int((num_candidates + num_current_candidates) * oversample)
+
 
     # TODO: is this allowed? 
     detected_keypoints = cv2.goodFeaturesToTrack(
@@ -51,7 +61,7 @@ def detect_new_candidate_keypoints(image, existing_keypoints, existing_candidate
 
     return new_candidates
 
-def add_new_landmarks(S, image, image_next, K, global_camera_poses):
+def add_new_landmarks(S, image, image_next, K, global_camera_poses, cfg: Optional[Dict[str, Any]] = None):
     '''Triangulate and add new landmarks, and updated candidates
     Input:
         S: Current state containing images, keypoints, and landmarks
@@ -66,11 +76,42 @@ def add_new_landmarks(S, image, image_next, K, global_camera_poses):
     # TODO could be cleaned up more
 
     # Track candidate keypoints between frames using KLT
+    # candidates_next, status_cand, error_cand = cv2.calcOpticalFlowPyrLK(
+    #                                             prevImg = image,
+    #                                             nextImg = image_next,
+    #                                             prevPts = S["C"].astype(np.float32),
+    #                                             nextPts = None)
+
+    prev_cand = S["C"].reshape(-1, 1, 2).astype(np.float32)
+
+    if cfg is not None:
+        lk_cfg = cfg["vo"]["lk"]
+        crit_type = lk_cfg["criteria"]["type"]
+        term = 0
+        if "EPS" in crit_type:
+            term |= cv2.TERM_CRITERIA_EPS
+        if "COUNT" in crit_type:
+            term |= cv2.TERM_CRITERIA_COUNT
+        lk_params = dict(
+            winSize=tuple(lk_cfg["winSize"]),
+            maxLevel=lk_cfg["maxLevel"],
+            criteria=(term, lk_cfg["criteria"]["maxCount"], lk_cfg["criteria"]["epsilon"]),
+        )
+    else:
+        lk_params = {}
+
+
     candidates_next, status_cand, error_cand = cv2.calcOpticalFlowPyrLK(
-                                                prevImg = image,
-                                                nextImg = image_next,
-                                                prevPts = S["C"].astype(np.float32),
-                                                nextPts = None)
+        prevImg=image,
+        nextImg=image_next,
+        prevPts=prev_cand,
+        nextPts=None,
+        **lk_params
+    )
+
+    # convert back to (N,2)
+    candidates_next = candidates_next[status_cand.flatten() == 1].reshape(-1, 2)
+
 
 
     # update, and prune candidates, that have been failed to track
@@ -81,7 +122,15 @@ def add_new_landmarks(S, image, image_next, K, global_camera_poses):
 
     # --- Decide based on angle change, which candidates to convert to keypoints and landmarks --
     # Parameters
-    angle_threshold = 10.0  # degrees
+
+    cand = (cfg or {}).get("candidates", {})
+    angle_threshold = cand.get("angle_threshold_deg", 10.0)
+    max_keypoints = cand.get("max_keypoints", 1000)
+    min_candidates_needed = cand.get("min_candidates_needed", 20)
+    max_new_candidates = cand.get("max_new_candidates", 50)
+    need_mult = cand.get("need_multiplier", 1.5)
+
+    # angle_threshold = 10.0  # degrees
 
     current_camera_pose = global_camera_poses[-1]
     K_inv = np.linalg.inv(K)
@@ -117,7 +166,7 @@ def add_new_landmarks(S, image, image_next, K, global_camera_poses):
     num_candidates_available = candidates_to_add.shape[0]
 
     # Limit the number of total keypoints tracked
-    max_keypoints = 1000  # TODO put in parameter config
+    # max_keypoints = 1000  # TODO put in parameter config
     num_keypoints_current = S["P"].shape[0]
     
     num_keypoints_to_add = min(num_candidates_available, max_keypoints - num_keypoints_current)
@@ -155,10 +204,12 @@ def add_new_landmarks(S, image, image_next, K, global_camera_poses):
     else:
         num_lost_candidates = np.count_nonzero(~status_cand.flatten())
 
-    min_candidates_needed = 20 # TODO put in parameter config
-    max_new_candidates = 50 # TODO put in parameter config
+    # min_candidates_needed = 20 # TODO put in parameter config
+    # max_new_candidates = 50 # TODO put in parameter config
 
-    num_new_candidates_needed = int((num_converted_candidates + num_lost_candidates) * 1.5)
+    # num_new_candidates_needed = int((num_converted_candidates + num_lost_candidates) * 1.5)
+    num_new_candidates_needed = int((num_converted_candidates + num_lost_candidates) * need_mult)
+
 
     num_new_candidates_needed = max(num_new_candidates_needed, min_candidates_needed)
     num_new_candidates_needed = min(num_new_candidates_needed, max_new_candidates)
@@ -169,7 +220,8 @@ def add_new_landmarks(S, image, image_next, K, global_camera_poses):
         existing_keypoints=S["P"],
         existing_candidates=S["C"],
         num_candidates=num_new_candidates_needed,
-        num_current_candidates=S["C"].shape[0]
+        num_current_candidates=S["C"].shape[0],
+        cfg=cfg
     )
 
     # Add new candidates to the state

@@ -1,8 +1,10 @@
 
 import numpy as np
 import cv2
+from typing import Any, Dict, Optional
 
-def RANSAC_P3P(P, P_next, K):
+
+def RANSAC_P3P(P, P_next, K, cfg: Optional[Dict[str, Any]] = None):
     '''
     Input:
         P: 2D keypoints in previous frame
@@ -15,19 +17,19 @@ def RANSAC_P3P(P, P_next, K):
         inliers: Boolean mask of inliers used for pose estimation
     '''
 
+    params = (cfg or {}).get("pose", {}).get("ransac", {})
+    max_pix_displacement = params.get("max_pix_displacement", 8.0)
+    confidence = params.get("confidence", 0.99)
+    max_iterations = params.get("max_iterations", 1000)
+
     # Output placeholders
-    R_C_W = np.zeros((3, 3))
+    R_C_W = np.eye(3)
     t_C_W = np.zeros((3, 1))
     inlier_mask = np.zeros((P_next.shape[0],), dtype=bool)
 
     # # Maybe flip x and y?
     # P = P[:, ::-1]
     # P_next = P_next[:, ::-1]
-
-    # Parameters for the PnP RANSAC
-    max_pix_displacement = 8.0  # pixels
-    confidence = 0.99
-    max_iterations = 1000
 
     # print("P shape: ", P.shape)
     # print("P_next shape: ", P_next.shape)
