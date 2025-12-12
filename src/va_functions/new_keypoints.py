@@ -16,9 +16,6 @@ def detect_new_candidate_keypoints(image, existing_keypoints, existing_candidate
         new_candidates: Detected new candidate keypoints
     '''
     # Use cv2.goodFeaturesToTrack to detect new keypoints
-    # max_corners = int((num_candidates + num_current_candidates) * 1.5)  # Detect more to account for filtering
-    # quality_level = 0.01
-    # min_distance = 10  # pixels
 
     params = (cfg or {}).get("new_candidates", {})
     oversample = params.get("oversample_factor", 1.5)
@@ -76,14 +73,6 @@ def add_new_landmarks(S, image, image_next, K, global_camera_poses, cfg: Optiona
     # TODO could be cleaned up more
 
     # Track candidate keypoints between frames using KLT
-    # candidates_next, status_cand, error_cand = cv2.calcOpticalFlowPyrLK(
-    #                                             prevImg = image,
-    #                                             nextImg = image_next,
-    #                                             prevPts = S["C"].astype(np.float32),
-    #                                             nextPts = None)
-
-    prev_cand = S["C"].reshape(-1, 1, 2).astype(np.float32)
-
     if cfg is not None:
         lk_cfg = cfg["vo"]["lk"]
         crit_type = lk_cfg["criteria"]["type"]
@@ -101,24 +90,29 @@ def add_new_landmarks(S, image, image_next, K, global_camera_poses, cfg: Optiona
         lk_params = {}
 
 
+    prev_cand = S["C"].reshape(-1, 1, 2).astype(np.float32)
+
     candidates_next, status_cand, error_cand = cv2.calcOpticalFlowPyrLK(
         prevImg=image,
         nextImg=image_next,
         prevPts=prev_cand,
         nextPts=None,
-        **lk_params
+        **lk_params  # falls du welche nutzt
     )
 
-    # convert back to (N,2)
-    candidates_next = candidates_next[status_cand.flatten() == 1].reshape(-1, 2)
+    # Guard
+    if status_cand is None or candidates_next is None:
+        status_cand = None
+    else:
+        mask = status_cand.flatten().astype(bool)
 
+        # candidates_next ist (N,1,2) → erst maskieren, dann reshape zu (M,2)
+        candidates_next = candidates_next[mask].reshape(-1, 2)
 
+        S["C"] = candidates_next
+        S["F"] = S["F"][mask]
+        S["T"] = S["T"][mask]
 
-    # update, and prune candidates, that have been failed to track
-    if status_cand is not None:
-        S["C"] = candidates_next[status_cand.flatten() == 1]
-        S["F"] = S["F"][status_cand.flatten() == 1]
-        S["T"] = S["T"][status_cand.flatten() == 1]
 
     # --- Decide based on angle change, which candidates to convert to keypoints and landmarks --
     # Parameters
@@ -130,7 +124,6 @@ def add_new_landmarks(S, image, image_next, K, global_camera_poses, cfg: Optiona
     max_new_candidates = cand.get("max_new_candidates", 50)
     need_mult = cand.get("need_multiplier", 1.5)
 
-    # angle_threshold = 10.0  # degrees
 
     current_camera_pose = global_camera_poses[-1]
     K_inv = np.linalg.inv(K)
@@ -166,7 +159,6 @@ def add_new_landmarks(S, image, image_next, K, global_camera_poses, cfg: Optiona
     num_candidates_available = candidates_to_add.shape[0]
 
     # Limit the number of total keypoints tracked
-    # max_keypoints = 1000  # TODO put in parameter config
     num_keypoints_current = S["P"].shape[0]
     
     num_keypoints_to_add = min(num_candidates_available, max_keypoints - num_keypoints_current)
@@ -204,10 +196,6 @@ def add_new_landmarks(S, image, image_next, K, global_camera_poses, cfg: Optiona
     else:
         num_lost_candidates = np.count_nonzero(~status_cand.flatten())
 
-    # min_candidates_needed = 20 # TODO put in parameter config
-    # max_new_candidates = 50 # TODO put in parameter config
-
-    # num_new_candidates_needed = int((num_converted_candidates + num_lost_candidates) * 1.5)
     num_new_candidates_needed = int((num_converted_candidates + num_lost_candidates) * need_mult)
 
 
