@@ -116,7 +116,8 @@ def select_keypoint_correspondence(images_list: list, plot_tracked_points: bool 
         images_list: list of np.ndarray, list containing all to be used images
     Outputs:
         keypoints1: np.ndarray, keypoints in the first image
-        keypoints2: np.ndarray, corresponding keypoints in the second image
+        keypoints2: np.ndarray, corresponding keypoints in the second image # TODO is this correct? I think it should be
+        keypoints_list_keyframes: list of np.ndarray, list containing keypoints in the first and last image
     '''
     
     # TODO: bracuht man für den zweiten teil noch mehr landmarks ?
@@ -168,20 +169,21 @@ def select_keypoint_correspondence(images_list: list, plot_tracked_points: bool 
         
     
     
-    point_frame_0 = cv2.goodFeaturesToTrack(images_list[0], mask = None, **feature_params)
-    points_previous_frame = point_frame_0.copy()
+    point_frame_0 = cv2.goodFeaturesToTrack(images_list[0], mask = None, **feature_params) # Nx1x2
+    points_previous_frame = point_frame_0.copy() # Nx1x2
     initial_num_good_features = len(point_frame_0)
     
     for frame_idx in range(1, len(images_list)):
+        print(f"shape of points previous frame: {points_previous_frame.shape}")
         points_frame_i, st, err = cv2.calcOpticalFlowPyrLK(images_list[frame_idx-1], images_list[frame_idx], points_previous_frame, None, **lk_params)
         
         point_mask = (st.flatten() == 1)
         num_tracked_points = np.sum(point_mask)
         print(f'Frame {frame_idx}: Tracked {num_tracked_points} / {initial_num_good_features} points.')
-        print("from previous num fratures:", len(points_previous_frame), " to current num features:", len(points_frame_i[point_mask]))
+        print("from previous num features:", len(points_previous_frame), " to current num features:", len(points_frame_i[point_mask]))
         initial_num_good_features = num_tracked_points
         
-        points_previous_frame = points_frame_i[point_mask].reshape(-1,2)
+        points_previous_frame = points_frame_i[point_mask].reshape(-1,2) # shape (M,2) TODO I am not sure if the reshape should happen here
         point_frame_0 = point_frame_0[point_mask].reshape(-1,2)
         
         if plot_tracked_points:
@@ -200,7 +202,7 @@ def select_keypoint_correspondence(images_list: list, plot_tracked_points: bool 
     
     
     
-    keypoints_lsit_keyframes = [point_frame_0, points_previous_frame]
+    keypoints_lsit_keyframes = [point_frame_0, points_previous_frame] # TODO I would do the reshape here, or maybe dont do it at all and keep it (N,1,2) though the whole pipeline
     
 
     return keypoints_lsit_keyframes
@@ -215,7 +217,6 @@ def calculate_final_relative_R_t(tracked_keypoints_list: list, K: np.ndarray, cf
     # Make sure they are all in float, needed for OpenCV
     points_frame_0 = tracked_keypoints_list[0].astype(np.float32)
     points_frame_i = tracked_keypoints_list[1].astype(np.float32)
-    
     
     # ----------Tuning parameters ----------
     reprojection_threshold = cfg["bootstrap"]["fundamental"]["reprojection_threshold"]

@@ -24,8 +24,6 @@ def detect_new_candidate_keypoints(image, existing_keypoints, existing_candidate
 
     max_corners = int((num_candidates + num_current_candidates) * oversample)
 
-
-    # TODO: is this allowed? 
     detected_keypoints = cv2.goodFeaturesToTrack(
         image,
         maxCorners=max_corners,
@@ -114,9 +112,8 @@ def add_new_landmarks(S, image, image_next, K, global_camera_poses, cfg: Optiona
         S["T"] = S["T"][mask]
 
 
-    # --- Decide based on angle change, which candidates to convert to keypoints and landmarks --
+    # --- Decide based on angle change, which candidates to convert to keypoints and landmarks ---
     # Parameters
-
     cand = (cfg or {}).get("candidates", {})
     angle_threshold = cand.get("angle_threshold_deg", 10.0)
     max_keypoints = cand.get("max_keypoints", 1000)
@@ -124,10 +121,15 @@ def add_new_landmarks(S, image, image_next, K, global_camera_poses, cfg: Optiona
     max_new_candidates = cand.get("max_new_candidates", 50)
     need_mult = cand.get("need_multiplier", 1.5)
 
+    bin = (cfg or {}).get("bin", {})
+    num_bins_horizontal = bin.get("num_bins_horizontal", 3)
+    num_bins_vertical = bin.get("num_bins_vertical", 2)
+
 
     current_camera_pose = global_camera_poses[-1]
     K_inv = np.linalg.inv(K)
 
+    # -- Compute bearing angle changes for all candidates --> First selection constraint --
     # Bearing vector old poses
     old_T = S["T"] # TODO flatten to (num_keypoints, 12) for now (num_keypoints, 4, 4)
     old_keypoints_ = S["F"] # This is in pixels (num_keypoints, 2)
@@ -151,23 +153,68 @@ def add_new_landmarks(S, image, image_next, K, global_camera_poses, cfg: Optiona
         np.clip(cos_angles, -1.0, 1.0)
     ) * (180.0 / np.pi)
 
-    candidates_to_add_mask = bearing_angle > angle_threshold
+    candidate_passed_bearing_angle_mask = bearing_angle > angle_threshold
+
 
     # Get ordered indicess for the best candidates to add (size based on angle)
-    ordered_indices = np.argsort(bearing_angle[candidates_to_add_mask])[::-1]
-    candidates_to_add = candidates_to_add_mask[candidates_to_add_mask][ordered_indices]
+    ordered_indices = np.argsort(bearing_angle[candidate_passed_bearing_angle_mask])[::-1]
+    candidates_to_add = candidate_passed_bearing_angle_mask[candidate_passed_bearing_angle_mask][ordered_indices]
     num_candidates_available = candidates_to_add.shape[0]
 
     # Limit the number of total keypoints tracked
     num_keypoints_current = S["P"].shape[0]
-    
     num_keypoints_to_add = min(num_candidates_available, max_keypoints - num_keypoints_current)
     num_keypoints_to_add = max(num_keypoints_to_add, 0)
 
-    # Final mask of candidates to add
-    final_candidates_to_add_mask = np.zeros_like(candidates_to_add_mask, dtype=bool)
-    final_candidates_to_add_mask[np.where(candidates_to_add_mask)[0][ordered_indices[:num_keypoints_to_add]]] = True
-    candidates_to_add_mask = final_candidates_to_add_mask
+    # -- Bin the candidates to add, and prefer even distribution and candidates from less populated bins preferred --
+    # Get image dimensions
+    img_h, img_w = image.shape[:2]
+    bin_width = img_w / num_bins_horizontal
+    bin_height = img_h / num_bins_vertical
+
+    # Set up bins for points already tracked
+    existing_keypoints = S["P"]
+    bin_counts = np.zeros((num_bins_vertical, num_bins_horizontal), dtype=int)
+    for kp in existing_keypoints:
+        x, y = kp
+        bin_x = min(int(x // bin_width), num_bins_horizontal - 1)
+        bin_y = min(int(y // bin_height), num_bins_vertical - 1)
+        bin_counts[bin_y, bin_x] += 1
+    
+    # Sort candidates into bins
+    candidate_bins = []
+    for kp in S["C"]:
+        x, y = kp
+        bin_x = min(int(x // bin_width), num_bins_horizontal - 1)
+        bin_y = min(int(y // bin_height), num_bins_vertical - 1)
+        candidate_bins.append((bin_y, bin_x))
+
+    # Get the ordered bin indices from less populated to more populated from bin_counts
+    bin_indices = [(i, j) for i in range(num_bins_vertical) for j in range(num_bins_horizontal)]
+    bin_indices.sort(key=lambda b: bin_counts[b[0], b[1]])
+
+    # Select candidates to add based on bin order
+    candidates_to_add_mask = np.zeros((S["C"].shape[0],), dtype=bool)
+    count_added = 0
+    for bin_y, bin_x in bin_indices:
+        for idx in ordered_indices:
+            if count_added >= num_keypoints_to_add:
+                break
+            if candidates_to_add[idx]:
+                kp = S["C"][np.where(candidate_passed_bearing_angle_mask)[0][idx]]
+                x, y = kp
+                kp_bin_x = min(int(x // bin_width), num_bins_horizontal - 1)
+                kp_bin_y = min(int(y // bin_height), num_bins_vertical - 1)
+                if kp_bin_x == bin_x and kp_bin_y == bin_y:
+                    candidates_to_add_mask[np.where(candidate_passed_bearing_angle_mask)[0][idx]] = True
+                    count_added += 1
+        if count_added >= num_keypoints_to_add:
+            break
+
+    # # Final mask of candidates to add
+    # final_candidates_to_add_mask = np.zeros_like(candidates_to_add_mask, dtype=bool)
+    # final_candidates_to_add_mask[np.where(candidates_to_add_mask)[0][ordered_indices[:num_keypoints_to_add]]] = True
+    # candidates_to_add_mask = final_candidates_to_add_mask
 
     # Add selected candidates to keypoints and landmarks
     new_keypoints = S["C"][candidates_to_add_mask]

@@ -13,7 +13,7 @@ def RANSAC_P3P(P, P_next, K, cfg: Optional[Dict[str, Any]] = None):
         K: Camera intrinsic matrix
     Output:
         R: Estimated rotation matrix from previous to current frame
-        t: Estimated translation vector from previous to current frame
+        t: Estimated translation vector from previous to current frame (has unit length due to scale ambiguity)
         inliers: Boolean mask of inliers used for pose estimation
     '''
 
