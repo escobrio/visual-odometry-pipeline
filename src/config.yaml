@@ -1,5 +1,5 @@
 dataset:
-  id: 2  # 0: KTTI, 1: Malaga, 2: Parking, 3: own_datasets
+  id: 0  # 0: KTTI, 1: Malaga, 2: Parking, 3: own_datasets
   n_frames: 100
 
 pipeline:
@@ -57,10 +57,13 @@ candidates:
   need_multiplier: 1.5
 
 bin:
-  num_bins_horizontal: 3
-  num_bins_vertical: 2
+  use_binning: True
+  num_bins_horizontal: 4
+  num_bins_vertical: 3
+  weight_keypoints: 0.7
+  weight_candidates: 0.3
 
 new_candidates:
   quality_level: 0.01
   min_distance: 10
-  oversample_factor: 1.5
+  oversample_factor: 3
