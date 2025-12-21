@@ -3,6 +3,8 @@ import cv2
 import matplotlib.pyplot as plt
 from typing import Any, Dict, Optional
 
+from va_functions.binning import _detect_keypoints_per_bin
+
 
 def initialize_visual_odometry(frames: list, all_images_path: list, K: np.ndarray, plot_tracked_points: bool = False, dataset_id: int = -1, cfg: Optional[Dict[str, Any]] = None) -> dict:
     '''Initialize visual odometry using certain amount of frames, the frame indices are given in `frames`.
@@ -130,6 +132,20 @@ def select_keypoint_correspondence(images_list: list, plot_tracked_points: bool 
     if "COUNT" in crit_type: term |= cv2.TERM_CRITERIA_COUNT
     criteria = (term, lk_cfg["criteria"]["maxCount"], lk_cfg["criteria"]["epsilon"])
 
+    bin = (cfg or {}).get("bin", {})
+    use_binning = bin.get("use_binning", True)
+    if use_binning:
+        detect_keypoints_in_bins = bin.get("detect_keypoints_in_bins", True)
+        num_bins_horizontal = bin.get("num_bins_horizontal", 3)
+        num_bins_vertical = bin.get("num_bins_vertical", 2)
+        weight_keypoints = bin.get("weight_keypoints", 0.7)
+        weight_candidates = bin.get("weight_candidates", 0.3)
+        quality_level_decay = bin.get("quality_level_decay", 0.7)
+        max_iterations = bin.get("max_iterations", 5)
+        not_enough_ratio = bin.get("not_enough_ratio", 0.5)
+        total_initial_keypoints_count = bin.get("total_initial_keypoints_count", 400)
+
+
     feature_params = dict(
         maxCorners=feat["maxCorners"],
         qualityLevel=feat["qualityLevel"],
@@ -141,7 +157,7 @@ def select_keypoint_correspondence(images_list: list, plot_tracked_points: bool 
         winSize=tuple(lk_cfg["winSize"]),
         maxLevel=lk_cfg["maxLevel"],
         criteria=criteria,
-)
+    )
     
     
     # #---------Tuning parameters, startpoint from OpenCV example code ---------
@@ -166,11 +182,27 @@ def select_keypoint_correspondence(images_list: list, plot_tracked_points: bool 
             
     #         lk_params = dict(winSize = (15, 15), maxLevel = 3,
     #                          criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 10, 0.03))
-        
-    
-    
-    point_frame_0 = cv2.goodFeaturesToTrack(images_list[0], mask = None, **feature_params) # Nx1x2
-    points_previous_frame = point_frame_0.copy() # Nx1x2
+
+
+    if not use_binning:
+        point_frame_0 = cv2.goodFeaturesToTrack(images_list[0], mask = None, **feature_params) # Nx1x2
+    else:
+        num_bins = num_bins_horizontal * num_bins_vertical
+        quota_per_bin = np.ones((num_bins,), dtype=int) * np.floor(total_initial_keypoints_count // num_bins)
+        point_frame_0 = _detect_keypoints_per_bin(
+            image=images_list[0],
+            num_bins_horizontal=num_bins_horizontal,
+            num_bins_vertical=num_bins_vertical,
+            quota_per_bin=quota_per_bin,
+            quality_level=feat["qualityLevel"],
+            min_distance=feat["minDistance"],
+            oversample=1.0,
+            quality_level_decay=quality_level_decay,
+            max_iterations=max_iterations,
+            not_enough_ratio=not_enough_ratio,
+        )  # Nx1x2
+
+    points_previous_frame = point_frame_0.copy() # Nx1x2    
     initial_num_good_features = len(point_frame_0)
     
     for frame_idx in range(1, len(images_list)):
