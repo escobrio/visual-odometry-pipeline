@@ -22,8 +22,6 @@ def initialize_visual_odometry(frames: list, all_images_path: list, K: np.ndarra
     if dataset_id == -1:
         raise ValueError("dataset_id must be given to initialize_visual_odometry function for initialization.")
     
-    plt.ion()
-    
     calibration_images = []
     
     for frame_idx in frames:
@@ -108,7 +106,7 @@ def plot_3D_points_and_frames(R_Wi: np.ndarray, W_t_Wi: np.ndarray, W_landmarks_
     ax.set_zlabel('Z')
     ax.legend()
     ax.view_init(elev=-83, azim=-90)
-    plt.show()
+    plt.show(block=True)
 
 def select_keypoint_correspondence(images_list: list, plot_tracked_points: bool = False, dataset_id: int = -1, cfg=None) -> list:
     '''Select keypoint correspondences between two images.
@@ -196,7 +194,7 @@ def select_keypoint_correspondence(images_list: list, plot_tracked_points: bool 
                 ax.plot([x_new, x_old], [y_new, y_old], 'y-')
             ax.set_title(f'Tracked Points from Frame 0 to Frame {frame_idx}')
             ax.axis('off')
-            plt.show()
+            plt.show(block=True)
     
     
     
@@ -224,7 +222,7 @@ def calculate_final_relative_R_t(tracked_keypoints_list: list, K: np.ndarray, cf
 
     num_correspondences_before = len(points_frame_0)
     
-    
+    # Uses the 8-point RANSAC algorithm under the hood
     F, mask_fundemental = cv2.findFundamentalMat(points_frame_0, points_frame_i, cv2.FM_RANSAC, reprojection_threshold, probability_all_inliers)
     E = K.T @ F @ K
     
