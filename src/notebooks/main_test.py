@@ -12,6 +12,7 @@ from va_functions.print_ import format_info
 import yaml
 from pathlib import Path
 
+# Load config
 SRC = Path.cwd().parent
 CFG_PATH = SRC / "config.yaml"
 
@@ -32,7 +33,7 @@ initialization_frames = cfg["initialization_part1"]["frames"]
 fraction_of_features_as_candidates = cfg["initialization_part2"]["fraction_of_features_as_candidates"]
 auto_swap_xy_if_y_gt_x = cfg["initialization_part2"]["auto_swap_xy_if_y_gt_x"]
 
-#lk
+# Lukas Kanade parameters
 lk_cfg = cfg["vo"]["lk"]
 criteria = (
     cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT,
@@ -45,22 +46,120 @@ lk_params = dict(
     criteria=criteria,
 )
 
-# Part I
-# An initialization module that extracts an initial set of 2D ↔ 3D correspondences from the first frames of the sequence and bootstraps the initial camera poses and landmarks.
+feat = cfg["bootstrap"]["features_by_dataset"][str(dataset_id)]
+lk_cfg = cfg["bootstrap"]["lk"]
+crit_type = lk_cfg["criteria"]["type"]
+term = 0
+if "EPS" in crit_type:   term |= cv2.TERM_CRITERIA_EPS
+if "COUNT" in crit_type: term |= cv2.TERM_CRITERIA_COUNT
+criteria = (term, lk_cfg["criteria"]["maxCount"], lk_cfg["criteria"]["epsilon"])
+
+feature_params = dict(
+    maxCorners=feat["maxCorners"],
+    qualityLevel=feat["qualityLevel"],
+    minDistance=feat["minDistance"],
+    blockSize=feat["blockSize"],
+)
 
 # TODO: correctly load Malaga images
-left_images, last_frame, camera_intrinsics = load_dataset(dataset_id)
+images_paths, last_frame, camera_intrinsics = load_dataset(dataset_id)
+image_0 = cv2.imread(images_paths[0], cv2.IMREAD_GRAYSCALE)
 
-print("Loaded", len(left_images), "left images")
-print("left_images:", left_images[:3])
+# Initialize figure. Plot image with tracked keypoints on the left and 3D landmarks and poses on right
+if visualization:
+    plt.ion()
+    fig = plt.figure(figsize=(14, 6))
 
-print(camera_intrinsics)
+    # Vis1: Show images with tracked keypoints and flow vectors
+    ax1 = fig.add_subplot(1, 2, 1)
+    img_artist = ax1.imshow(image_0, cmap='gray')
+    kp_scatter = ax1.scatter([], [], c='r', s=5)
+    flow_line, = ax1.plot([], [], color='y', linewidth=0.8)
+    ax1.set_title('Tracked Keypoints')
+    ax1.axis('off')
+
+    # Vis2: 3D plot of landmarks and camera poses
+    ax2 = fig.add_subplot(1, 2, 2, projection='3d')
+    landmarks_scatter = ax2.scatter([], [], [], c='b', s=1)
+    traj_line, = ax2.plot([], [], [], c='g', lw=1)
+    current_pose_scatter = ax2.scatter([], [], [], c='r', s=50)
+    direction_line, = ax2.plot([], [], [], c='r', lw=2)
+    ax2.set_title('3D Landmarks and Camera Poses')
+    ax2.set_xlabel('X')
+    ax2.set_ylabel('Y')
+    ax2.set_zlabel('Z')
+    # Camera convention: Y down, ZX plane horizontal
+    ax2.view_init(elev=-30., azim=-90)
+
+
+# Part I
+# Bootstrap VO pipeline
+# An initialization module that extracts an initial set of 2D ↔ 3D correspondences from the first frames of the sequence and bootstraps the initial camera poses and landmarks.
+
+
+
+points_0 = cv2.goodFeaturesToTrack(image_0, mask = None, **feature_params)
+kp_scatter.set_offsets(points_0[:,0,:])
+
+# Initialize variables
+prev_image = image_0
+prev_points = points_0
 
 # Extract initial set of 2D <-> 3D correspondences and bootstrap the Initial Camera Pose and landmarks
+for frame_idx in range(1, len(images_paths)):
+
+    # Track points for next image
+    next_image = cv2.imread(images_paths[frame_idx], cv2.IMREAD_GRAYSCALE)
+    points_i, st, err = cv2.calcOpticalFlowPyrLK(prev_image, next_image, prev_points, None, **lk_params) # Nx1x2 points
+    points_i = points_i[(st.flatten()==1)].reshape(-1,2)
+    points_0 = points_0[(st.flatten()==1)].reshape(-1,2)
+    prev_points = points_i.reshape(-1,1,2)
+    img_artist.set_data(next_image)
+    kp_scatter.set_offsets(points_i)
+
+    E, mask_essential = cv2.findEssentialMat(points_0, points_i, camera_intrinsics, method=cv2.RANSAC, prob=cfg["bootstrap"]["fundamental"]["probability_all_inliers"], threshold=cfg["bootstrap"]["fundamental"]["reprojection_threshold"])
+    retval, Rot, Trans, inlier_mask = cv2.recoverPose(E, points_0, points_i, camera_intrinsics, mask=mask_essential) # Rotation, Translation from frame_i to frame_0 | expresses frame_0 in frame_i
+
+    # Triangulate landmarks
+    M1 = camera_intrinsics @ np.hstack((np.eye(3), np.zeros((3,1))))
+    Mi = camera_intrinsics @ np.hstack((Rot, Trans))
+    
+    landmarks_4d = cv2.triangulatePoints(M1, Mi, points_0.T, points_i.T)
+    landmarks_3d = landmarks_4d[:3]/ landmarks_4d[3]
+    landmarks_scatter._offsets3d = (landmarks_3d[0],landmarks_3d[1],landmarks_3d[2])
+    average_depth = landmarks_3d.T[2].mean()
+    print(f"average_depth: {landmarks_3d.T[2].mean():.3f}, {np.median(landmarks_3d.T[2]):.3f}")
+
+    # if average_depth < 5.0:
+    #     break
+
+
+
+
 plot_tracked_points=False
 
-vo_initialization_dict = initialize_visual_odometry(frames=initialization_frames, all_images_path=left_images,
+vo_initialization_dict = initialize_visual_odometry(frames=initialization_frames, all_images_path=images_paths,
                                                     K=camera_intrinsics, plot_tracked_points=plot_tracked_points, dataset_id=dataset_id, cfg=cfg)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 R_Wi = vo_initialization_dict['R_Wi'] # Rotation
 W_t_Wi = vo_initialization_dict['W_t_Wi'] # Translation
@@ -114,11 +213,6 @@ S = {"P": keypoints_i,
      "T": candidate_camera_poses_i
     }
 
-# Load first image
-image_idx = 0
-image = cv2.imread(left_images[0], cv2.IMREAD_GRAYSCALE)
-if image is None:
-    print("Error loading image at index ", image_idx)
 
 # Initialize global camera pose storage
 # TODO flaten all of this to 12 elements
@@ -138,37 +232,10 @@ if print_info:
     print(format_info(info, header="Initial State S"))
 
 # Full loop for part 2
-
-# Initialize figure. Plot image with tracked keypoints on the left and 3D landmarks and poses on right
-if visualization:
-    plt.ion()
-    fig = plt.figure(figsize=(14, 6))
-
-    # Vis1: Show images with tracked keypoints and flow vectors
-    ax1 = fig.add_subplot(1, 2, 1)
-    img_artist = ax1.imshow(image, cmap='gray')
-    kp_scatter = ax1.scatter([], [], c='r', s=5)
-    flow_line, = ax1.plot([], [], color='y', linewidth=0.8)
-    ax1.set_title('Tracked Keypoints')
-    ax1.axis('off')
-
-    # Vis2: 3D plot of landmarks and camera poses
-    ax2 = fig.add_subplot(1, 2, 2, projection='3d')
-    landmarks_scatter = ax2.scatter([], [], [], c='b', s=1)
-    traj_line, = ax2.plot([], [], [], c='g', lw=1)
-    current_pose_scatter = ax2.scatter([], [], [], c='r', s=50)
-    direction_line, = ax2.plot([], [], [], c='r', lw=2)
-    ax2.set_title('3D Landmarks and Camera Poses')
-    ax2.set_xlabel('X')
-    ax2.set_ylabel('Y')
-    ax2.set_zlabel('Z')
-    # Camera convention: Y down, ZX plane horizontal
-    ax2.view_init(elev=-30., azim=-90)
-
 for frame_idx in range(1,n_frames):
     # get new image
     # image_next = cv2.imread(img_path + '%06d.png' % frame_idx, cv2.IMREAD_GRAYSCALE)
-    image_next = cv2.imread(left_images[frame_idx], cv2.IMREAD_GRAYSCALE)
+    image_next = cv2.imread(images_paths[frame_idx], cv2.IMREAD_GRAYSCALE)
 
     # Track keypoints from image to image_next using KLT (optical flow)
     prev_points = S["P"].reshape(-1, 1, 2).astype(np.float32) # reshape to (N,1,2) for cv2
