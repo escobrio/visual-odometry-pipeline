@@ -1,6 +1,6 @@
 dataset:
   id: 2  # 0: KTTI, 1: Malaga, 2: Parking, 3: own_datasets
-  n_frames: 100
+  n_frames: 500
 
 pipeline:
   visualization: true

@@ -57,7 +57,7 @@ print("left_images:", left_images[:3])
 print(camera_intrinsics)
 
 # Extract initial set of 2D <-> 3D correspondences and bootstrap the Initial Camera Pose and landmarks
-plot_tracked_points=True
+plot_tracked_points=False
 
 vo_initialization_dict = initialize_visual_odometry(frames=initialization_frames, all_images_path=left_images,
                                                     K=camera_intrinsics, plot_tracked_points=plot_tracked_points, dataset_id=dataset_id, cfg=cfg)
@@ -139,6 +139,32 @@ if print_info:
 
 # Full loop for part 2
 
+# Initialize figure. Plot image with tracked keypoints on the left and 3D landmarks and poses on right
+if visualization:
+    plt.ion()
+    fig = plt.figure(figsize=(14, 6))
+
+    # Vis1: Show images with tracked keypoints and flow vectors
+    ax1 = fig.add_subplot(1, 2, 1)
+    img_artist = ax1.imshow(image, cmap='gray')
+    kp_scatter = ax1.scatter([], [], c='r', s=5)
+    flow_line, = ax1.plot([], [], color='y', linewidth=0.8)
+    ax1.set_title('Tracked Keypoints')
+    ax1.axis('off')
+
+    # Vis2: 3D plot of landmarks and camera poses
+    ax2 = fig.add_subplot(1, 2, 2, projection='3d')
+    landmarks_scatter = ax2.scatter([], [], [], c='b', s=1)
+    traj_line, = ax2.plot([], [], [], c='g', lw=1)
+    current_pose_scatter = ax2.scatter([], [], [], c='r', s=50)
+    direction_line, = ax2.plot([], [], [], c='r', lw=2)
+    ax2.set_title('3D Landmarks and Camera Poses')
+    ax2.set_xlabel('X')
+    ax2.set_ylabel('Y')
+    ax2.set_zlabel('Z')
+    # Camera convention: Y down, ZX plane horizontal
+    ax2.view_init(elev=-30., azim=-90)
+
 for frame_idx in range(1,n_frames):
     # get new image
     # image_next = cv2.imread(img_path + '%06d.png' % frame_idx, cv2.IMREAD_GRAYSCALE)
@@ -203,51 +229,57 @@ for frame_idx in range(1,n_frames):
 
     # --- Visualization ---
     if visualization:
-        fig = plt.figure(figsize=(14, 6))
+        img_artist.set_data(image_next)
+        ax1.set_title(f'Tracked Keypoints {frame_idx-1} → {frame_idx}')
 
-        # Vis1: Show images with tracked keypoints and flow vectors
-        ax1 = fig.add_subplot(1, 2, 1)
-        ax1.imshow(image_next, cmap='gray')
-        ax1.scatter(keypoints_next[:, 0], keypoints_next[:, 1], c='r', s=5)
+        if keypoints_next.size:
+            kp_scatter.set_offsets(keypoints_next)
+        else:
+            kp_scatter.set_offsets(np.empty((0, 2)))
 
-        ax1.quiver(
-            P_prev_inliers[:, 0], P_prev_inliers[:, 1],
-            keypoints_next[:, 0] - P_prev_inliers[:, 0],
-            keypoints_next[:, 1] - P_prev_inliers[:, 1],
-            angles='xy', scale_units='xy', scale=1, color='y', width=0.003
+        if P_prev_inliers.size:
+            x = np.column_stack([
+                P_prev_inliers[:, 0],
+                keypoints_next[:, 0],
+                np.full(P_prev_inliers.shape[0], np.nan),
+            ])
+            y = np.column_stack([
+                P_prev_inliers[:, 1],
+                keypoints_next[:, 1],
+                np.full(P_prev_inliers.shape[0], np.nan),
+            ])
+            flow_line.set_data(x.ravel(), y.ravel())
+        else:
+            flow_line.set_data([], [])
+
+        if global_landmarks.size:
+            landmarks_scatter._offsets3d = (
+                global_landmarks[:, 0],
+                global_landmarks[:, 1],
+                global_landmarks[:, 2],
+            )
+        else:
+            landmarks_scatter._offsets3d = (np.array([]), np.array([]), np.array([]))
+
+        poses_xyz = np.array([pose[:3, 3] for pose in global_camera_poses])
+        traj_line.set_data_3d(poses_xyz[:, 0], poses_xyz[:, 1], poses_xyz[:, 2])
+
+        current_pose = global_camera_poses[-1]
+        current_pose_scatter._offsets3d = (
+            np.array([current_pose[0, 3]]),
+            np.array([current_pose[1, 3]]),
+            np.array([current_pose[2, 3]]),
         )
 
-        ax1.set_title(f'Tracked Keypoints {frame_idx-1} → {frame_idx}')
-        ax1.axis('off')
-
-        # vis2: 3D plot of landmarks and camera poses (higlight current pose and landmarks)
-        ax2 = fig.add_subplot(1, 2, 2, projection='3d')
-        ax2.scatter(global_landmarks[:, 0], global_landmarks[:, 1], global_landmarks[:, 2], c='b', s=1)
-        # for i, pose in enumerate(global_camera_poses):
-        #     ax.scatter(pose[0, 3], pose[1, 3], pose[2, 3], c='r' if i == frame_idx else 'g', s=50)
-        #     # ax.text(pose[0, 3], pose[1, 3], pose[2, 3], f'Cam {i}', color='black')
-
-        # print all passed camera poses in green
-        for i in range(1, len(global_camera_poses)-1):
-            ax2.scatter(global_camera_poses[i][0, 3], global_camera_poses[i][1, 3], global_camera_poses[i][2, 3], c='g', s=20)
-        # print last camera pose in red
-        ax2.scatter(global_camera_poses[-1][0, 3], global_camera_poses[-1][1, 3], global_camera_poses[-1][2, 3], c='r', s=50)
-        # add direction arrow to last camera pose from last position to current position
-        current_pose = global_camera_poses[-1]
-        previous_pose = global_camera_poses[-2]
-        ax2.quiver(previous_pose[0, 3], previous_pose[1, 3], previous_pose[2, 3],
-                  current_pose[0, 3] - previous_pose[0, 3],
-                  current_pose[1, 3] - previous_pose[1, 3],
-                  current_pose[2, 3] - previous_pose[2, 3],
-                  color='r', length=3.0, normalize=True)
-
-        ax2.set_title('3D Landmarks and Camera Poses')
-        ax2.set_xlabel('X')
-        ax2.set_ylabel('Y')
-        ax2.set_zlabel('Z')
-
-        # Camera convention: Y down, ZX plane horizontal
-        ax2.view_init(elev=-30., azim=-90)
+        if len(global_camera_poses) > 1:
+            previous_pose = global_camera_poses[-2]
+            direction_line.set_data_3d(
+                [previous_pose[0, 3], current_pose[0, 3]],
+                [previous_pose[1, 3], current_pose[1, 3]],
+                [previous_pose[2, 3], current_pose[2, 3]]
+            )
+        else:
+            direction_line.set_data_3d([], [], [])
 
         # keep camera-centered view with a 20×20×20 cube
         cx, cy, cz = current_pose[0, 3], current_pose[1, 3], current_pose[2, 3]
@@ -257,9 +289,10 @@ for frame_idx in range(1,n_frames):
         ax2.set_ylim(cy - range_, cy + range_)
         ax2.set_zlim(cz - range_, cz + range_)
 
+        fig.canvas.draw_idle()
+        fig.canvas.flush_events()
+        # plt.pause(1.0)
 
-
-        plt.legend()
-        plt.show(block=True) 
-
-
+if visualization:
+    plt.ioff()
+    plt.show()
