@@ -60,6 +60,7 @@ feature_params = dict(
     minDistance=feat["minDistance"],
     blockSize=feat["blockSize"],
 )
+np.set_printoptions(precision=3, suppress=True)
 
 # TODO: correctly load Malaga images
 images_paths, last_frame, camera_intrinsics = load_dataset(dataset_id)
@@ -84,7 +85,7 @@ if visualization:
     traj_line, = ax2.plot([], [], [], c='g', lw=1)
     current_pose_scatter = ax2.scatter([], [], [], c='r', s=50)
     direction_line, = ax2.plot([], [], [], c='r', lw=2)
-    ax2.set_title('3D Landmarks and Camera Poses')
+    ax2.set_title('3D Landmarks')
     ax2.set_xlabel('X')
     ax2.set_ylabel('Y')
     ax2.set_zlabel('Z')
@@ -96,17 +97,15 @@ if visualization:
 # Bootstrap VO pipeline
 # An initialization module that extracts an initial set of 2D ↔ 3D correspondences from the first frames of the sequence and bootstraps the initial camera poses and landmarks.
 
-
-
-points_0 = cv2.goodFeaturesToTrack(image_0, mask = None, **feature_params)
-kp_scatter.set_offsets(points_0[:,0,:])
-
 # Initialize variables
+points_0 = cv2.goodFeaturesToTrack(image_0, mask = None, **feature_params)
 prev_image = image_0
 prev_points = points_0
 
 # Extract initial set of 2D <-> 3D correspondences and bootstrap the Initial Camera Pose and landmarks
-for frame_idx in range(1, len(images_paths)):
+frame_idx = 0
+median_depth = np.inf
+while median_depth > 7.0:
 
     # Track points for next image
     next_image = cv2.imread(images_paths[frame_idx], cv2.IMREAD_GRAYSCALE)
@@ -114,58 +113,80 @@ for frame_idx in range(1, len(images_paths)):
     points_i = points_i[(st.flatten()==1)].reshape(-1,2)
     points_0 = points_0[(st.flatten()==1)].reshape(-1,2)
     prev_points = points_i.reshape(-1,1,2)
-    img_artist.set_data(next_image)
-    kp_scatter.set_offsets(points_i)
 
     E, mask_essential = cv2.findEssentialMat(points_0, points_i, camera_intrinsics, method=cv2.RANSAC, prob=cfg["bootstrap"]["fundamental"]["probability_all_inliers"], threshold=cfg["bootstrap"]["fundamental"]["reprojection_threshold"])
-    retval, Rot, Trans, inlier_mask = cv2.recoverPose(E, points_0, points_i, camera_intrinsics, mask=mask_essential) # Rotation, Translation from frame_i to frame_0 | expresses frame_0 in frame_i
+    retval, R_iW, i_t_iW, inlier_mask = cv2.recoverPose(E, points_0, points_i, camera_intrinsics, mask=mask_essential) # Change of basis frame_0 to frame_i | expresses frame_0 in frame_i
 
     # Triangulate landmarks
     M1 = camera_intrinsics @ np.hstack((np.eye(3), np.zeros((3,1))))
-    Mi = camera_intrinsics @ np.hstack((Rot, Trans))
+    Mi = camera_intrinsics @ np.hstack((R_iW, i_t_iW))
     
     landmarks_4d = cv2.triangulatePoints(M1, Mi, points_0.T, points_i.T)
     landmarks_3d = landmarks_4d[:3]/ landmarks_4d[3]
-    landmarks_scatter._offsets3d = (landmarks_3d[0],landmarks_3d[1],landmarks_3d[2])
-    average_depth = landmarks_3d.T[2].mean()
-    print(f"average_depth: {landmarks_3d.T[2].mean():.3f}, {np.median(landmarks_3d.T[2]):.3f}")
+    median_depth = np.median(landmarks_3d.T[2])
+    print(f"---\naverage_depth: {landmarks_3d.T[2].mean():.3f}, median depth: {np.median(landmarks_3d.T[2]):.3f}, \nR: \n{R_iW}, \ntrans: \n{i_t_iW}")
+    
+    prev_image = next_image # For next iteration
+    frame_idx += 1
 
-    # if average_depth < 5.0:
-    #     break
+    # --- Visualization ---
+    if visualization:
+        img_artist.set_data(next_image)
+        ax1.set_title(f'Tracked Keypoints 0 → {frame_idx}')
+        kp_scatter.set_offsets(points_i)
+        x = np.column_stack([
+            points_0[:, 0],
+            points_i[:, 0],
+            np.full(points_0.shape[0], np.nan),
+        ])
+        y = np.column_stack([
+            points_0[:, 1],
+            points_i[:, 1],
+            np.full(points_0.shape[0], np.nan),
+        ])
+        flow_line.set_data(x.ravel(), y.ravel())
+
+        landmarks_scatter._offsets3d = (
+            landmarks_3d[0],
+            landmarks_3d[1],
+            landmarks_3d[2],
+        )
+
+        # Express pose in world frame
+        R_Wi = R_iW.T
+        W_t_Wi = (- R_Wi @ i_t_iW).reshape(3)
+        traj_line.set_data_3d([0, W_t_Wi[0]], [0, W_t_Wi[1]], [0,W_t_Wi[2]])
+        current_pose_scatter._offsets3d = ([W_t_Wi[0]], [W_t_Wi[1]], [W_t_Wi[2]])
+        
+        # scale = 10.0
+        # origin_i = np.asarray(W_t_Wi).reshape(3,)
+        # ex_i = (R_Wi @ np.array([scale, 0.0, 0.0]))  
+        # ey_i = (R_Wi @ np.array([0.0, scale, 0.0]))
+        # ez_i = (R_Wi @ np.array([0.0, 0.0, scale]))
+        # ax2.quiver(origin_i[0], origin_i[1], origin_i[2],
+        #         ex_i[0], ex_i[1], ex_i[2], color='r', arrow_length_ratio=0.1)
+        # ax2.quiver(origin_i[0], origin_i[1], origin_i[2],
+        #         ey_i[0], ey_i[1], ey_i[2], color='g', arrow_length_ratio=0.1)
+        # ax2.quiver(origin_i[0], origin_i[1], origin_i[2],
+        #         ez_i[0], ez_i[1], ez_i[2], color='b', arrow_length_ratio=0.1)
 
 
+        # keep camera-centered view with a 20×20×20 cube
+        cx, cy, cz = 0,0,0
+        range_ = 20
+
+        ax2.set_xlim(cx - range_, cx + range_)
+        ax2.set_ylim(cy - range_, cy + range_)
+        ax2.set_zlim(cz - range_, cz + range_)
+
+        fig.canvas.draw_idle()
+        fig.canvas.flush_events()
+        # plt.pause(1.0)
 
 
-plot_tracked_points=False
-
-vo_initialization_dict = initialize_visual_odometry(frames=initialization_frames, all_images_path=images_paths,
-                                                    K=camera_intrinsics, plot_tracked_points=plot_tracked_points, dataset_id=dataset_id, cfg=cfg)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-R_Wi = vo_initialization_dict['R_Wi'] # Rotation
-W_t_Wi = vo_initialization_dict['W_t_Wi'] # Translation
+R_Wi = R_iW.T
+W_t_Wi = (- R_Wi @ i_t_iW)
 initial_camera_pose = np.vstack((np.hstack((R_Wi, W_t_Wi)), [0, 0, 0, 1]))
-matched_keypoints = vo_initialization_dict['matched_keypoints']
-W_landmarks_of_keypoints = vo_initialization_dict['W_landmarks_of_keypoints']
 
 print("R_Wi\n", R_Wi)
 print("W_t_Wi\n", W_t_Wi)
@@ -179,8 +200,8 @@ print("||W_t_Wi|| =", length_w_t_Wi, "should be ~1")
 
 # Load K, Landmarks and Keypoints from part 1
 K = camera_intrinsics
-landmarks_i = W_landmarks_of_keypoints
-keypoints_i = matched_keypoints[0] # dim: num_keypoints x 2
+landmarks_i = landmarks_3d.T
+keypoints_i = points_i # dim: num_keypoints x 2
 # check if the keypoints x y need to be swapped
 if auto_swap_xy_if_y_gt_x:
     x_max = np.max(keypoints_i[:,0])
@@ -231,8 +252,10 @@ if print_info:
 
     print(format_info(info, header="Initial State S"))
 
+image = cv2.imread(images_paths[frame_idx], cv2.IMREAD_GRAYSCALE)
+
 # Full loop for part 2
-for frame_idx in range(1,n_frames):
+for frame_idx in range(frame_idx + 1, n_frames):
     # get new image
     # image_next = cv2.imread(img_path + '%06d.png' % frame_idx, cv2.IMREAD_GRAYSCALE)
     image_next = cv2.imread(images_paths[frame_idx], cv2.IMREAD_GRAYSCALE)
