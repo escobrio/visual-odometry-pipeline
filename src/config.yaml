@@ -1,5 +1,5 @@
 dataset:
-  id: 2  # 0: KTTI, 1: Malaga, 2: Parking, 3: own_datasets
+  id: 0 # 0: KTTI, 1: Malaga, 2: Parking, 3: own_datasets
   n_frames: 100
 
 pipeline:
@@ -8,7 +8,7 @@ pipeline:
   plot_tracked_points: true
 
 initialization_part1:
-  frames: [0, 1, 2, 3]
+  frames: [0, 1, 2, 3] #Scheint gut zu funktionieren
 
 
 initialization_part2:
@@ -17,13 +17,13 @@ initialization_part2:
 
 bootstrap:
   fundamental:
-    reprojection_threshold: 3.0
+    reprojection_threshold: 9.0 #Muss für malaga grösser gewählt werden (3 -> ca 20 inlayer, 9 -> ca 120 inlayer), für die anderen beiden steigt die anzahl inlayer nur ein kleinwenig
     probability_all_inliers: 0.99
 
   features_by_dataset:
-    "0": { maxCorners: 1000, qualityLevel: 0.1,   minDistance: 6, blockSize: 6 }
-    "1": { maxCorners: 1000, qualityLevel: 0.001, minDistance: 5, blockSize: 5 }
-    "2": { maxCorners: 1000, qualityLevel: 0.001, minDistance: 5, blockSize: 5 }
+    "0": { maxCorners: 1000, qualityLevel: 0.1,   minDistance: 6, blockSize: 6 } #ob man hier 5 oder 6 wählt macht fast keinen unterschied
+    "1": { maxCorners: 1000, qualityLevel: 0.1, minDistance: 4, blockSize: 4 }
+    "2": { maxCorners: 1000, qualityLevel: 0.01, minDistance: 5, blockSize: 5 } #Dieser change ist nicht zwingend nötig (davor 300 inlayer, führt das zu einer genaueren pose ?)
 
   lk:
     winSize: [15, 15]
