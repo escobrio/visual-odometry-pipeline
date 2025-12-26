@@ -26,18 +26,23 @@ Create new folder for video data:
 mkdir data
 cd data
 mkdir provided_data
+mkdir own_rec_dataset
 cd ..
 ```
-After that download and extract the zip data and copy it into the provided data folder. The data folder should be structured like this:
+After that download and extract the zip data and copy it into the provided data folder. The own created datasets can be downloaded here: [Datasets](https://polybox.ethz.ch/index.php/s/mXbkFwwGe4zocG2). The data folder should be structured like this:
 ```text
 .
 ├── data
+│   ├── own_rec_dataset
+│   │   ├── frames_vga_step3
+│   │   └── frames_vga_step3_short
 │   └── provided_data
-│       ├── kitti
-│       │   ├── 05
-│       │   │   ├── image_0
-│       │   │   └── image_1
-│       │   └── poses
+│       ├── kitti05
+│       │   └── kitti
+│       │       ├── 05
+│       │       │   ├── image_0
+│       │       │   └── image_1
+│       │       └── poses
 │       ├── malaga-urban-dataset-extract-07
 │       │   ├── Images
 │       │   ├── malaga-urban-dataset-extract-07_rectified_1024x768_Images

@@ -19,6 +19,7 @@ def load_dataset(ds):
     kitti_path = os.path.join(project_root, 'data', 'provided_data', 'kitti05', 'kitti')
     malaga_path = os.path.join(project_root, 'data', 'malaga-urban-dataset-extract-07')
     parking_path = os.path.join(project_root, 'data', 'provided_data', 'parking')
+    own_dataset_path = os.path.join(project_root, 'data', 'own_rec_dataset', 'frames_vga_step3_short')
 
     # --- Dataset selection ---
     if ds == 0:
@@ -54,10 +55,29 @@ def load_dataset(ds):
         assert 'own_dataset_path' in locals(), "You must define own_dataset_path"
         left_images = sorted(glob(os.path.join(own_dataset_path, '*.png')))
         last_frame = len(left_images)
+        
+        # Intrinsics from Spectacular Recdirectly from Apple API
+        fx = 1440.68408203125
+        fy = 1440.68408203125
+        cx = 962.48046875
+        cy = 728.88116455078125
+        
+        fx_vga = 480.228
+        fy_vga = 480.228
+        cx_vga = 320.827
+        cy_vga = 242.960
+
+        
+        # K = np.array([
+        #     [fx,  0, cx],
+        #     [ 0, fy, cy],
+        #     [ 0,  0,  1]
+        # ])
+        
         K = np.array([
-            [fx, 0, cx],
-            [0, fy, cy],
-            [0, 0, 1]
+            [fx_vga,    0, cx_vga],
+            [   0, fy_vga, cy_vga],
+            [   0,     0,     1]
         ])
     else:
         raise ValueError("Invalid dataset index")

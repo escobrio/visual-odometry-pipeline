@@ -1,6 +1,6 @@
 dataset:
-  id: 0 # 0: KTTI, 1: Malaga, 2: Parking, 3: own_datasets
-  n_frames: 100
+  id: 3 # 0: KTTI, 1: Malaga, 2: Parking, 3: own_datasets
+  n_frames: 500
 
 pipeline:
   visualization: true
@@ -8,8 +8,8 @@ pipeline:
   plot_tracked_points: true
 
 initialization_part1:
-  frames: [0, 1, 2, 3] #Scheint gut zu funktionieren
-
+  frames: [0, 1, 2, 3, 4, 5] #Scheint gut zu funktionieren für das eigene dataset (brauche hier mehr initialization frames da die baseline sonst sehr klein ist)
+  #frames: [0, 1, 2, 3] #Für kitti, parking und malaga
 
 initialization_part2:
   fraction_of_features_as_candidates: 0.1
@@ -17,13 +17,17 @@ initialization_part2:
 
 bootstrap:
   fundamental:
-    reprojection_threshold: 9.0 #Muss für malaga grösser gewählt werden (3 -> ca 20 inlayer, 9 -> ca 120 inlayer), für die anderen beiden steigt die anzahl inlayer nur ein kleinwenig
+    reprojection_threshold: 4.0 #Muss für malaga grösser gewählt werden (3 -> ca 20 inlayer, 9 -> ca 120 inlayer), für die anderen beiden steigt die anzahl inlayer nur ein kleinwenig
+    #reprojection_threshold: 9.0 #Malaga
+    #reprojection_threshold: 3.0 #Alle anderen
     probability_all_inliers: 0.99
 
   features_by_dataset:
     "0": { maxCorners: 1000, qualityLevel: 0.1,   minDistance: 6, blockSize: 6 } #ob man hier 5 oder 6 wählt macht fast keinen unterschied
     "1": { maxCorners: 1000, qualityLevel: 0.1, minDistance: 4, blockSize: 4 }
     "2": { maxCorners: 1000, qualityLevel: 0.01, minDistance: 5, blockSize: 5 } #Dieser change ist nicht zwingend nötig (davor 300 inlayer, führt das zu einer genaueren pose ?)
+    "3": { maxCorners: 300, qualityLevel: 0.01, minDistance: 30, blockSize: 5 } #Eigene datasets
+    # Habe bedeutend bessere performance wenn man die minDistance hochschraubt aber dafür eine weniger gute qualität erwartet
 
   lk:
     winSize: [15, 15]
