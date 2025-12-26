@@ -13,7 +13,7 @@ import yaml
 from pathlib import Path
 
 # Load config
-SRC = Path.cwd().parent
+SRC = Path.cwd()
 CFG_PATH = SRC / "config.yaml"
 
 with open(CFG_PATH, "r") as f:

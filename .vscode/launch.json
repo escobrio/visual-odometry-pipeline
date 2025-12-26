@@ -5,12 +5,12 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Debug main_test.py",
+            "name": "Debug main.py",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/src/notebooks/main_test.py",
+            "program": "${workspaceFolder}/src/main.py",
             "console": "integratedTerminal",
-            "cwd": "${workspaceFolder}/src/notebooks",
+            "cwd": "${workspaceFolder}/src",
             "justMyCode": true
         },
     ]
