@@ -101,11 +101,15 @@ if visualization:
 points_0 = cv2.goodFeaturesToTrack(image_0, mask = None, **feature_params)
 prev_image = image_0
 prev_points = points_0
+if visualization:
+    img_artist.set_data(image_0)
+    ax1.set_title(f'Initial keypoints, image 0')
+    kp_scatter.set_offsets(points_0.reshape(-1,2))
 
 # Extract initial set of 2D <-> 3D correspondences and bootstrap the Initial Camera Pose and landmarks
-frame_idx = 0
+frame_idx = 1
 median_depth = np.inf
-while median_depth > 7.0:
+while median_depth < 0.0 or median_depth > 7.0:
 
     # Track points for next image
     next_image = cv2.imread(images_paths[frame_idx], cv2.IMREAD_GRAYSCALE)
@@ -123,8 +127,8 @@ while median_depth > 7.0:
     
     landmarks_4d = cv2.triangulatePoints(M1, Mi, points_0.T, points_i.T)
     landmarks_3d = landmarks_4d[:3]/ landmarks_4d[3]
-    median_depth = np.median(landmarks_3d.T[2])
-    print(f"---\naverage_depth: {landmarks_3d.T[2].mean():.3f}, median depth: {np.median(landmarks_3d.T[2]):.3f}, \nR: \n{R_iW}, \ntrans: \n{i_t_iW}")
+    median_depth = np.median(landmarks_3d[2])
+    print(f"---\naverage_depth: {landmarks_3d[2].mean():.3f}, median depth: {np.median(landmarks_3d[2]):.3f}, \nR: \n{R_iW}, \ntrans: \n{i_t_iW}")
     
     prev_image = next_image # For next iteration
     frame_idx += 1
@@ -132,7 +136,7 @@ while median_depth > 7.0:
     # --- Visualization ---
     if visualization:
         img_artist.set_data(next_image)
-        ax1.set_title(f'Tracked Keypoints 0 → {frame_idx}')
+        ax1.set_title(f'Tracked Keypoints 0 → {frame_idx-1}')
         kp_scatter.set_offsets(points_i)
         x = np.column_stack([
             points_0[:, 0],
@@ -274,7 +278,9 @@ for frame_idx in range(frame_idx + 1, n_frames):
     S["X"] = S["X"][status.flatten().astype(bool)]
     
     # Use RANSAC to estimate the new camera pose
-    R_new_to_old, t_new_to_old, inlier_mask = RANSAC_P3P(S["P"], P_next_candidates, K, cfg)
+    retval, rvec, t_new_to_old, inliers = cv2.solvePnPRansac(objectPoints=S["X"], imagePoints=P_next_candidates, distCoeffs=None, cameraMatrix=K)
+    R_new_to_old, _ = cv2.Rodrigues(rvec)
+    inlier_mask = inliers.reshape(-1)
 
     # prune lost landmarks and keypoints
     keypoints_next = P_next_candidates[inlier_mask]
@@ -293,7 +299,7 @@ for frame_idx in range(frame_idx + 1, n_frames):
     # build new relative transformation matrix T_
     T_c2_c1 = np.vstack((np.hstack((R_new_to_old, t_new_to_old)), [0, 0, 0, 1]))
     T_c1_c2 = np.linalg.inv(T_c2_c1)
-    current_camera_pose = Twc_1 @ T_c1_c2
+    current_camera_pose = T_c1_c2
     global_camera_poses.append(current_camera_pose)
 
 

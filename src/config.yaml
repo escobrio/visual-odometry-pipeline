@@ -1,5 +1,5 @@
 dataset:
-  id: 2  # 0: KTTI, 1: Malaga, 2: Parking, 3: own_datasets
+  id: 1  # 0: KTTI, 1: Malaga, 2: Parking, 3: own_datasets
   n_frames: 500
 
 pipeline:
