@@ -2,6 +2,7 @@ import os
 import cv2
 import numpy as np
 from glob import glob
+import yaml
 
 def load_dataset(ds):
     '''Load dataset based on the dataset index `ds`.
@@ -62,4 +63,47 @@ def load_dataset(ds):
     else:
         raise ValueError("Invalid dataset index")
     return left_images, last_frame, K
+    
+
+class VOConfig:
+    def __init__(self, config_path):
+        """Load configuration from YAML file."""
+        with open(config_path, "r") as f:
+            self.cfg = yaml.safe_load(f)
+
+    @property
+    def dataset_id(self) -> int:
+        return self.cfg["dataset"]["id"]
+    
+    @property
+    def n_frames(self) -> int:
+        return self.cfg["dataset"]["n_frames"]
+    
+    @property
+    def visualize(self) -> bool:
+        return self.cfg["pipeline"]["visualization"]
+    
+    def lk_params(self) -> dict:
+        """Get Lucas-Kanade optical flow parameters."""
+        lk_cfg = self.cfg["vo"]["lk"]
+        criteria = (
+            cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT,
+            lk_cfg["criteria"]["maxCount"],
+            lk_cfg["criteria"]["epsilon"],
+        )
+        return dict(
+            winSize=tuple(lk_cfg["winSize"]),
+            maxLevel=lk_cfg["maxLevel"],
+            criteria=criteria,
+        )
+    
+    def feature_params(self) -> dict:
+        """Get feature detection parameters for current dataset."""
+        feat = self.cfg["bootstrap"]["features_by_dataset"][str(self.dataset_id)]
+        return dict(
+            maxCorners=feat["maxCorners"],
+            qualityLevel=feat["qualityLevel"],
+            minDistance=feat["minDistance"],
+            blockSize=feat["blockSize"],
+        )
     

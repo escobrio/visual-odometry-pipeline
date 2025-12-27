@@ -50,7 +50,7 @@ vo:
 
 
 candidates:
-  angle_threshold_deg: 10.0
+  angle_threshold_deg: 1.0
   max_keypoints: 1000
   min_candidates_needed: 20
   max_new_candidates: 50
