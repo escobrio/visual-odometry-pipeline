@@ -1,6 +1,8 @@
 import numpy as np
 import cv2
 
+from va_functions.new_keypoints import _allocate_quota, _detect_keypoints_per_bin
+
 
 def bootstrap_VO(images_paths, cfg, camera_intrinsics, visualizer):
     # Initialize Plot
@@ -8,10 +10,30 @@ def bootstrap_VO(images_paths, cfg, camera_intrinsics, visualizer):
 
 
     # Part I: Bootstrap VO pipeline
-    # An initialization module that extracts an initial set of 2D ↔ 3D correspondences from the first frames of the sequence and bootstraps the initial camera poses and landmarks.
+    # An initialization module that extracts an initial set of 2D ↔ 3D correspondences from the 
+    # first frames of the sequence and bootstraps the initial camera poses and landmarks.
 
     # Initialize variables
-    points_0 = cv2.goodFeaturesToTrack(prev_image, mask = None, **cfg.feature_params())
+    if cfg.cfg["bin"]["use_binning"]:
+        num_bins_horizontal = cfg.cfg["bin"]["num_bins_horizontal"]
+        num_bins_vertical = cfg.cfg["bin"]["num_bins_vertical"]
+        num_bins = num_bins_horizontal * num_bins_vertical
+        bin_weights =  np.ones((num_bins, 1), dtype=np.float32) / num_bins
+        quota_per_bin = _allocate_quota(cfg.cfg["bin"]["total_initial_keypoints_count"], bin_weights)
+        points_0 = _detect_keypoints_per_bin(
+            prev_image,
+            num_bins_horizontal= num_bins_horizontal,
+            num_bins_vertical= num_bins_vertical,
+            quota_per_bin= quota_per_bin,
+            quality_level=cfg.cfg["new_candidates"]["quality_level"],
+            min_distance=cfg.cfg["new_candidates"]["min_distance"],
+            oversample=1,
+            quality_level_decay=cfg.cfg["bin"]["quality_level_decay"],
+            max_iterations=cfg.cfg["bin"]["max_iterations"],
+            not_enough_ratio=cfg.cfg["bin"]["not_enough_ratio"]
+        )
+    else:
+        points_0 = cv2.goodFeaturesToTrack(prev_image, mask = None, **cfg.feature_params())
     prev_points = points_0
     frame_idx = 1
     median_depth = np.inf
@@ -26,7 +48,12 @@ def bootstrap_VO(images_paths, cfg, camera_intrinsics, visualizer):
         points_0 = points_0[(st.flatten()==1)].reshape(-1,2)
         prev_points = points_i.reshape(-1,1,2)
 
-        E, mask_essential = cv2.findEssentialMat(points_0, points_i, camera_intrinsics, method=cv2.RANSAC, prob=cfg.cfg["bootstrap"]["fundamental"]["probability_all_inliers"], threshold=cfg.cfg["bootstrap"]["fundamental"]["reprojection_threshold"])
+        E, mask_essential = cv2.findEssentialMat(points_0, 
+                                                 points_i, 
+                                                 camera_intrinsics, 
+                                                 method=cv2.RANSAC, 
+                                                 prob=cfg.cfg["bootstrap"]["fundamental"]["probability_all_inliers"], 
+                                                 threshold=cfg.cfg["bootstrap"]["fundamental"]["reprojection_threshold"])
         retval, R_iW, i_t_iW, inlier_mask = cv2.recoverPose(E, points_0, points_i, camera_intrinsics, mask=mask_essential) # Change of basis frame_0 to frame_i | expresses frame_0 in frame_i
 
         # Triangulate landmarks
