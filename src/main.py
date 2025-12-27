@@ -26,8 +26,10 @@ def visual_odometry(cfg: VOConfig):
     visualizer = None
     first_image = cv2.imread(images_paths[0], cv2.IMREAD_GRAYSCALE)
     if cfg.visualize:
-        visualizer = VOVisualizer(first_image)
-
+        visualizer = VOVisualizer(first_image,
+                                  record_video=cfg["pipeline"]["record_video"],
+                                  video_path=cfg["pipeline"]["video_path"],
+                                  fps=cfg["pipeline"]["video_fps"])
     # Part I: Bootstrap VO pipeline
     Rot, Translation, landmarks_i, keypoints_i, frame_idx = bootstrap_VO(images_paths, cfg, K, visualizer)
     initial_camera_pose = np.vstack((np.hstack((Rot, Translation)), [0, 0, 0, 1]))
@@ -163,9 +165,15 @@ def visual_odometry(cfg: VOConfig):
         print("shape of all landmarks: ", global_landmarks.shape)
 
         if cfg.visualize:
-            visualizer.update_image_view(image_next, keypoints_next, P_prev_inliers, frame_idx)
-            visualizer.update_3d_view(global_landmarks, global_camera_poses)
-            visualizer.refresh()
+            # visualizer.update_image_view(image_next, keypoints_next, P_prev_inliers, frame_idx)
+            # visualizer.update_3d_view(global_landmarks, global_camera_poses)
+            # visualizer.refresh()
+            visualizer.step(image_next, 
+                            keypoints_next, 
+                            P_prev_inliers, 
+                            frame_idx, 
+                            global_landmarks, 
+                            global_camera_poses)
 
     if cfg.visualize:
         plt.ioff()

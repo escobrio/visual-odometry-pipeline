@@ -66,9 +66,10 @@ def bootstrap_VO(images_paths, cfg, camera_intrinsics, visualizer):
         print(f"Frame {frame_idx}: Tracked {points_i.shape[0]} keypoints, "
                     f"landmarks median_depth={median_depth:.3f}")
         if cfg.visualize and visualizer is not None:
-            visualizer.update_image_view(next_image, points_i, points_0, frame_idx)
-            visualizer.update_3d_view(landmarks_3d.T, [np.eye(4)])
-            visualizer.refresh()
+            # visualizer.update_image_view(next_image, points_i, points_0, frame_idx)
+            # visualizer.update_3d_view(landmarks_3d.T, [np.eye(4)])
+            # visualizer.refresh()
+            visualizer.step(next_image, points_i, points_0, frame_idx, landmarks_3d.T, [np.eye(4)])
 
         prev_image = next_image # For next iteration
         frame_idx += 1

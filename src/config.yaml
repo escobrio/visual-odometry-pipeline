@@ -7,6 +7,9 @@ pipeline:
   print_info: true
   plot_tracked_points: true
   log: true
+  record_video: true
+  video_path: "vo_visualization.mp4"
+  video_fps: 20
 
 initialization_part1:
   frames: [0, 1, 2, 3]

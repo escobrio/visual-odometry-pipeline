@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
+from matplotlib.animation import FFMpegWriter
 from typing import List, Optional
 
 
@@ -10,9 +11,26 @@ class VOVisualizer:
     # Constants
     CAMERA_VIEW_RANGE = 10
     
-    def __init__(self, initial_image: np.ndarray):
+    def __init__(self, 
+                 initial_image: np.ndarray,
+                 record_video: bool = False,
+                 video_path: str = "vo_visualization.mp4",
+                 fps: int = 20):
         plt.ion()
         self.fig = plt.figure(figsize=(14, 6))
+
+         # --- video recording setup ---
+        self._record_video = record_video
+        self._video_path = video_path
+        self._fps = fps
+        self._video_writer: Optional[FFMpegWriter] = None
+
+        if self._record_video:
+            # If ffmpeg is not installed, this will raise at runtime.
+            self._video_writer = FFMpegWriter(fps=self._fps)
+            # "setup" opens the file and prepares the writer
+            self._video_writer.setup(self.fig, self._video_path, dpi=self.fig.dpi)
+
         
         # Create GridSpec with 3 rows, 2 columns
         # ax_image will span 2 rows (bigger), ax_keypoint_count will span 1 row (smaller)
@@ -169,9 +187,25 @@ class VOVisualizer:
         """Refresh the display."""
         self.fig.canvas.draw_idle()
         self.fig.canvas.flush_events()
-    
+
+        if self._record_video and self._video_writer is not None:
+            # capture the current frame into the video
+            self._video_writer.grab_frame()
+
+
+    def step(self, image: np.ndarray, keypoints: np.ndarray,
+             prev_keypoints: Optional[np.ndarray],
+            frame_idx: int, landmarks: np.ndarray,
+            poses: List[np.ndarray]):
+        """Update visualization for a single step."""
+        self.update_image_view(image, keypoints, prev_keypoints, frame_idx)
+        self.update_3d_view(landmarks, poses)
+        self.refresh()
+
     def close(self):
         """Close visualization and show final result."""
+        if self._record_video and self._video_writer is not None:
+            self._video_writer.finish()  # finalize mp4
         plt.ioff()
         plt.show()
 
