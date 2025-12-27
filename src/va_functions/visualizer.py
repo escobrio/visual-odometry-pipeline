@@ -15,7 +15,8 @@ class VOVisualizer:
                  initial_image: np.ndarray,
                  record_video: bool = False,
                  video_path: str = "vo_visualization.mp4",
-                 fps: int = 20):
+                 fps: int = 20,
+                 show_info_in_video: bool = True):
         plt.ion()
         self.fig = plt.figure(figsize=(14, 6))
 
@@ -24,6 +25,8 @@ class VOVisualizer:
         self._video_path = video_path
         self._fps = fps
         self._video_writer: Optional[FFMpegWriter] = None
+        self._show_info_in_video = show_info_in_video
+
 
         if self._record_video:
             # If ffmpeg is not installed, this will raise at runtime.
@@ -78,6 +81,18 @@ class VOVisualizer:
         self.ax_2d.grid(True, alpha=0.3)
         # self.ax_2d.legend(loc='upper right')
         self.ax_2d.set_aspect('equal', adjustable='box')
+
+        # --- info overlay (for video) ---
+        # Figure-level text in lower-left; monospace + box for readability
+        self.info_text = self.fig.text(
+            0.01, 0.01, "",
+            ha="left", va="bottom",
+            fontsize=8,
+            family="monospace",
+            bbox=dict(facecolor="white", alpha=0.7, pad=3)
+        )
+        # Initially hidden (shown only if enabled + info string provided)
+        self.info_text.set_visible(False)
         
     
     def update_image_view(self, image: np.ndarray, keypoints: np.ndarray,
@@ -182,6 +197,26 @@ class VOVisualizer:
             
             self.ax_2d.set_xlim(x_min - padding_x, x_max + padding_x)
             self.ax_2d.set_ylim(z_min - padding_z, z_max + padding_z)
+
+    def _update_info_overlay(self, info_text: Optional[str]) -> None:
+        """Update (or hide) the info overlay.
+
+        Only visible if:
+        - recording is enabled, and
+        - show_info_in_video was set, and
+        - a non-empty string is provided.
+        """
+        if (
+            self._record_video
+            and self._show_info_in_video
+            and info_text is not None
+            and info_text.strip() != ""
+        ):
+            self.info_text.set_text(info_text)
+            self.info_text.set_visible(True)
+        else:
+            # hide when not in use
+            self.info_text.set_visible(False)
     
     def refresh(self):
         """Refresh the display."""
@@ -196,10 +231,12 @@ class VOVisualizer:
     def step(self, image: np.ndarray, keypoints: np.ndarray,
              prev_keypoints: Optional[np.ndarray],
             frame_idx: int, landmarks: np.ndarray,
-            poses: List[np.ndarray]):
+            poses: List[np.ndarray],
+            info_text: Optional[str] = None):
         """Update visualization for a single step."""
         self.update_image_view(image, keypoints, prev_keypoints, frame_idx)
         self.update_3d_view(landmarks, poses)
+        self._update_info_overlay(info_text)
         self.refresh()
 
     def close(self):
