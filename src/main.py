@@ -8,6 +8,7 @@ from va_functions.bootstrap import bootstrap_VO
 from va_functions.new_keypoints import add_new_landmarks
 from va_functions.visualizer import VOVisualizer
 from va_functions.print_ import format_info
+from va_functions.new_keypoints import detect_new_candidate_keypoints
 
 
 def visual_odometry(cfg: VOConfig):
@@ -45,19 +46,32 @@ def visual_odometry(cfg: VOConfig):
             keypoints_i = keypoints_i[:, [1, 0]]
 
     # Sample keypoints as candidate keypoints
-    fraction = cfg.cfg["initialization_part2"]["fraction_of_features_as_candidates"]
-    num_candidate_keypoints = max(1, int(fraction * keypoints_i.shape[0]))
-    candidate_indices = np.random.choice(keypoints_i.shape[0], num_candidate_keypoints, replace=False)
-    candidate_keypoints_i = keypoints_i[candidate_indices] # They are tracked through the frames
-    candidate_first_observation_i = candidate_keypoints_i.copy() # They stay the same once assigned
+    if not cfg.cfg["bin"]["use_binning"]:
+        fraction = cfg.cfg["initialization_part2"]["fraction_of_features_as_candidates"]
+        num_candidate_keypoints = max(1, int(fraction * keypoints_i.shape[0]))
+        candidate_indices = np.random.choice(keypoints_i.shape[0], num_candidate_keypoints, replace=False)
+        candidate_keypoints_i = keypoints_i[candidate_indices] # They are tracked through the frames
+        candidate_first_observation_i = candidate_keypoints_i.copy() # They stay the same once assigned
 
-    # TODO store poses flattened as 12 elements
-    # for now store eye(4) x num_candidate_keypoints
-    candidate_camera_poses_i = np.repeat(np.eye(4)[np.newaxis, :, :], num_candidate_keypoints, axis=0)
+         # TODO store poses flattened as 12 elements
+        # for now store eye(4) x num_candidate_keypoints
+        candidate_camera_poses_i = np.repeat(np.eye(4)[np.newaxis, :, :], num_candidate_keypoints, axis=0)
 
-    # Prune candidates from main keypoints
-    keypoints_i = np.delete(keypoints_i, candidate_indices, axis=0)
-    landmarks_i = np.delete(landmarks_i, candidate_indices, axis=0)
+        # Prune candidates from main keypoints
+        keypoints_i = np.delete(keypoints_i, candidate_indices, axis=0)
+        landmarks_i = np.delete(landmarks_i, candidate_indices, axis=0)
+    else:
+        num_initial_candidates = 20 # TODO config
+        candidate_keypoints_i, _ = detect_new_candidate_keypoints(
+            first_image,
+            existing_keypoints=keypoints_i,
+            existing_candidates=None,
+            num_candidates=num_initial_candidates,
+            cfg=cfg
+        )
+        candidate_first_observation_i = candidate_keypoints_i.copy()
+        candidate_camera_poses_i = np.repeat(np.eye(4)[np.newaxis, :, :], candidate_keypoints_i.shape[0], axis=0)
+
 
     # State dict
     S = dict()

@@ -83,6 +83,20 @@ class VOConfig:
     def visualize(self) -> bool:
         return self.cfg["pipeline"]["visualization"]
     
+        # Mapping interface
+    def __getitem__(self, key):
+        return self.cfg[key]
+
+    def __iter__(self):
+        return iter(self.cfg)
+
+    def __len__(self):
+        return len(self.cfg)
+    
+    def get(self, key, default=None):
+        """Dict-like access to top-level config entries to ensure backward compatibility."""
+        return self.cfg.get(key, default)
+    
     def lk_params(self) -> dict:
         """Get Lucas-Kanade optical flow parameters."""
         lk_cfg = self.cfg["vo"]["lk"]
