@@ -120,6 +120,7 @@ def visual_odometry(cfg: VOConfig):
         S["X"] = S["X"][status.flatten().astype(bool)]
         
         # Use PnP RANSAC to estimate the new camera pose
+        # TODO not sure if we are alowed to use cv2.solvePnPRansac function, I think we can only use cv2 fundamental and essential?
         retval, rvec, t_new_to_old, inliers = cv2.solvePnPRansac(objectPoints=S["X"], imagePoints=P_next_candidates, distCoeffs=None, cameraMatrix=K)
         R_new_to_old, _ = cv2.Rodrigues(rvec)
         inlier_mask = inliers.reshape(-1)
