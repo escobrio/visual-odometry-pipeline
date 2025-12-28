@@ -20,7 +20,7 @@ def load_dataset(ds):
     kitti_path = os.path.join(project_root, 'data', 'provided_data', 'kitti05', 'kitti')
     malaga_path = os.path.join(project_root, 'data', 'provided_data', 'malaga-urban-dataset-extract-07')
     parking_path = os.path.join(project_root, 'data', 'provided_data', 'parking')
-    own_dataset_path = os.path.join(project_root, 'data', 'own_rec_dataset', 'frames_vga_step3_short')
+    own_dataset_path = os.path.join(project_root, 'data', 'own_rec_dataset', 'frames_vga')
 
     # --- Dataset selection ---
     if ds == 0:
@@ -63,17 +63,11 @@ def load_dataset(ds):
         cx = 962.48046875
         cy = 728.88116455078125
         
-        fx_vga = 480.228
-        fy_vga = 480.228
-        cx_vga = 320.827
-        cy_vga = 242.960
+        fx_vga = fx/3
+        fy_vga = fy/3
+        cx_vga = cx/3
+        cy_vga = cy/3
 
-        
-        # K = np.array([
-        #     [fx,  0, cx],
-        #     [ 0, fy, cy],
-        #     [ 0,  0,  1]
-        # ])
         
         K = np.array([
             [fx_vga,    0, cx_vga],

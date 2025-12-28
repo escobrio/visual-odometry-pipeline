@@ -1,6 +1,6 @@
 dataset:
   id: 3 # 0: KTTI, 1: Malaga, 2: Parking, 3: own_datasets
-  n_frames: 500
+  n_frames: 3000
 
 pipeline:
   visualization: true
@@ -9,8 +9,8 @@ pipeline:
   log: true
   record_video: true
   video_path: "vo_visualization.mp4"
-  video_fps: 10
-  show_info_in_video: true
+  video_fps: 30
+  show_info_in_video: false
 
 initialization_part1:
   frames: [0, 1, 2, 3, 4, 5] #Scheint gut zu funktionieren für das eigene dataset (brauche hier mehr initialization frames da die baseline sonst sehr klein ist)
