@@ -1,6 +1,6 @@
 dataset:
-  id: 1  # 0: KTTI, 1: Malaga, 2: Parking, 3: own_datasets
-  n_frames: 500
+  id: 3 # 0: KTTI, 1: Malaga, 2: Parking, 3: own_datasets
+  n_frames: 3000
 
 pipeline:
   visualization: true
@@ -9,8 +9,8 @@ pipeline:
   log: true
   record_video: true
   video_path: "vo_visualization.mp4"
-  video_fps: 10
-  show_info_in_video: true
+  video_fps: 30
+  show_info_in_video: false
 
 initialization_part1:
   frames: [0, 1, 2, 3]
@@ -25,10 +25,11 @@ bootstrap:
     reprojection_threshold: 3.0
     probability_all_inliers: 0.99
 
-  features_by_dataset:
+  features_by_dataset: # They are not used when we use binning
     "0": { maxCorners: 1000, qualityLevel: 0.1,   minDistance: 6, blockSize: 6 }
     "1": { maxCorners: 1000, qualityLevel: 0.001, minDistance: 5, blockSize: 5 }
     "2": { maxCorners: 1000, qualityLevel: 0.001, minDistance: 5, blockSize: 5 }
+    "3": { maxCorners: 300, qualityLevel: 0.01, minDistance: 30, blockSize: 5 } 
 
   lk:
     winSize: [15, 15]
