@@ -20,7 +20,7 @@ def load_dataset(ds):
     kitti_path = os.path.join(project_root, 'data', 'provided_data', 'kitti05', 'kitti')
     malaga_path = os.path.join(project_root, 'data', 'provided_data', 'malaga-urban-dataset-extract-07')
     parking_path = os.path.join(project_root, 'data', 'provided_data', 'parking')
-    own_dataset_path = os.path.join(project_root, 'data', 'own_rec_dataset', 'frames_vga')
+    own_dataset_path = os.path.join(project_root, 'data', 'own_rec_dataset', 'frames_vga_house')
 
     # --- Dataset selection ---
     if ds == 0:
