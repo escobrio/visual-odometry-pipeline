@@ -34,8 +34,7 @@ After that download and extract the zip data and copy it into the provided data 
 .
 ├── data
 │   ├── own_rec_dataset
-│   │   ├── frames_vga_step3
-│   │   └── frames_vga_step3_short
+│   │   ├── frames_vga_house
 │   └── provided_data
 │       ├── kitti05
 │       │   └── kitti
