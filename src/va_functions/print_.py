@@ -1,4 +1,4 @@
-
+import numpy as np
 
 def format_info(info: dict, header: str | None = None) -> str:
     """Recursively format nested dictionaries into a clean string, with optional header.

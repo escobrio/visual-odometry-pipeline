@@ -2,6 +2,7 @@ import os
 import cv2
 import numpy as np
 from glob import glob
+import yaml
 
 def load_dataset(ds):
     '''Load dataset based on the dataset index `ds`.
@@ -17,7 +18,7 @@ def load_dataset(ds):
     # Projekt-Root zwei Ebenen oberhalb dieses Files
     project_root = os.path.abspath(os.path.join(file_path, '..', '..'))
     kitti_path = os.path.join(project_root, 'data', 'provided_data', 'kitti05', 'kitti')
-    malaga_path = os.path.join(project_root, 'data', 'malaga-urban-dataset-extract-07')
+    malaga_path = os.path.join(project_root, 'data', 'provided_data', 'malaga-urban-dataset-extract-07')
     parking_path = os.path.join(project_root, 'data', 'provided_data', 'parking')
     own_dataset_path = os.path.join(project_root, 'data', 'own_rec_dataset', 'frames_vga_step3_short')
 
@@ -33,7 +34,7 @@ def load_dataset(ds):
         ])
     elif ds == 1:
         assert 'malaga_path' in locals(), "You must define malaga_path"
-        left_images = sorted(glob(os.path.join(malaga_path, 'malaga-urban-dataset-extract-07_rectified_800x600_Images' , '*.jpg')))
+        left_images = sorted(glob(os.path.join(malaga_path, 'malaga-urban-dataset-extract-07_rectified_800x600_Images' , '*left.jpg')))
         last_frame = len(left_images)
         K = np.array([
             [621.18428, 0, 404.0076],
@@ -82,4 +83,61 @@ def load_dataset(ds):
     else:
         raise ValueError("Invalid dataset index")
     return left_images, last_frame, K
+    
+
+class VOConfig:
+    def __init__(self, config_path):
+        """Load configuration from YAML file."""
+        with open(config_path, "r") as f:
+            self.cfg = yaml.safe_load(f)
+
+    @property
+    def dataset_id(self) -> int:
+        return self.cfg["dataset"]["id"]
+    
+    @property
+    def n_frames(self) -> int:
+        return self.cfg["dataset"]["n_frames"]
+    
+    @property
+    def visualize(self) -> bool:
+        return self.cfg["pipeline"]["visualization"]
+    
+        # Mapping interface
+    def __getitem__(self, key):
+        return self.cfg[key]
+
+    def __iter__(self):
+        return iter(self.cfg)
+
+    def __len__(self):
+        return len(self.cfg)
+    
+    def get(self, key, default=None):
+        """Dict-like access to top-level config entries to ensure backward compatibility."""
+        return self.cfg.get(key, default)
+    
+    def lk_params(self) -> dict:
+        """Get Lucas-Kanade optical flow parameters."""
+        lk_cfg = self.cfg["vo"]["lk"]
+        criteria = (
+            cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT,
+            lk_cfg["criteria"]["maxCount"],
+            lk_cfg["criteria"]["epsilon"],
+        )
+        return dict(
+            winSize=tuple(lk_cfg["winSize"]),
+            maxLevel=lk_cfg["maxLevel"],
+            criteria=criteria,
+        )
+    
+    def feature_params(self) -> dict:
+        """Get feature detection parameters for current dataset."""
+        feat = self.cfg["bootstrap"]["features_by_dataset"][str(self.dataset_id)]
+        return dict(
+            maxCorners=feat["maxCorners"],
+            qualityLevel=feat["qualityLevel"],
+            minDistance=feat["minDistance"],
+            blockSize=feat["blockSize"],
+        )
     
