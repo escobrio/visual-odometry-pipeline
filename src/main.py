@@ -124,10 +124,17 @@ def visual_odometry(cfg: VOConfig):
         
         # Use PnP RANSAC to estimate the new camera pose
         # TODO not sure if we are alowed to use cv2.solvePnPRansac function, I think we can only use cv2 fundamental and essential?
-        retval, rvec, t_new_to_old, inliers = cv2.solvePnPRansac(objectPoints=S["X"], imagePoints=P_next_candidates, distCoeffs=None, cameraMatrix=K)
-        R_new_to_old, _ = cv2.Rodrigues(rvec)
-        inlier_mask = inliers.reshape(-1)
+        # solvePnPRansac returns transformation from world to camera (T_CW)
+        retval, rvec, t_CW, inliers = cv2.solvePnPRansac(objectPoints=S["X"], imagePoints=P_next_candidates, distCoeffs=None, cameraMatrix=K)
+        R_CW, _ = cv2.Rodrigues(rvec)
+        
+        # Create boolean mask from inlier indices
+        num_points = len(S["X"])
+        inlier_mask = np.zeros(num_points, dtype=bool)
+        if inliers is not None:
+            inlier_mask[inliers.flatten()] = True
 
+       
         # prune lost landmarks and keypoints
         keypoints_next = P_next_candidates[inlier_mask]
         landmarks_next = S["X"][inlier_mask]
@@ -138,12 +145,11 @@ def visual_odometry(cfg: VOConfig):
         S["X"] = landmarks_next
 
         # Store the current camera pose globally
-        # Twc_2 = Twc_1 * T_c1_c2
-        Twc_1 = global_camera_poses[-1]
-        # build new relative transformation matrix T_
-        T_c2_c1 = np.vstack((np.hstack((R_new_to_old, t_new_to_old)), [0, 0, 0, 1]))
-        T_c1_c2 = np.linalg.inv(T_c2_c1)
-        current_camera_pose = T_c1_c2
+        # Build T_CW (camera from world) from PnP result
+        T_CW = np.vstack((np.hstack((R_CW, t_CW)), [0, 0, 0, 1]))
+        # Convert to T_WC (world from camera) for global pose
+        T_WC_current = np.linalg.inv(T_CW)
+        current_camera_pose = T_WC_current
         global_camera_poses.append(current_camera_pose)
 
         # Triangulate new landmarks and maintain candidates
@@ -158,9 +164,9 @@ def visual_odometry(cfg: VOConfig):
         info["num_candidates"] = S["C"].shape[0]
         info["new_landmarks"] = info_new_landmarks
         info["camera_pose"] = {
-            "t_x": t_new_to_old[0,0],
-            "t_y": t_new_to_old[1,0],
-            "t_z": t_new_to_old[2,0]}
+            "t_x": T_WC_current[0, 3],
+            "t_y": T_WC_current[1, 3],
+            "t_z": T_WC_current[2, 3]}
         fromated_info_string = format_info(info, header=f"Frame {frame_idx} - New Landmarks Info")
         print(fromated_info_string)
 
