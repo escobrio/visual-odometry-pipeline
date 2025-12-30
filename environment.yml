@@ -5,6 +5,7 @@ channels:
 dependencies:
   - python=3.10
   - ipykernel
+  - ffmpeg
   - pip:
       - "-r requirements.txt"
       - -e .
