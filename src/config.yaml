@@ -1,5 +1,5 @@
 dataset:
-  id: 3 # 0: KTTI, 1: Malaga, 2: Parking, 3: own_datasets
+  id: 0 # 0: KTTI, 1: Malaga, 2: Parking, 3: own_datasets
   n_frames: 3000
 
 pipeline:
@@ -8,10 +8,10 @@ pipeline:
   plot_tracked_points: true
   log: true
   record_video: true
-  video_path: "vo_visualization.mp4"
-  video_fps: 30
+  video_path: "visualization/vo_visualization.mp4"
+  video_fps: 15
   show_info_in_video: false
-
+  max_landmarks_to_visualize: 2000  # Nur die letzten N Landmarks plotten (Performance)  plot_only_active_landmarks: false  # true = nur getrackte, false = alle (Historie)
 initialization_part1:
   frames: [0, 1, 2, 3]
 
@@ -36,12 +36,12 @@ bootstrap:
     maxLevel: 3
     criteria:
       type: "EPS|COUNT"
-      maxCount: 10
+      maxCount: 30
       epsilon: 0.03
 
 pose:
   ransac:
-    max_pix_displacement: 8.0
+    max_pix_displacement: 15.0
     confidence: 0.99
     max_iterations: 1000
 
@@ -56,11 +56,16 @@ vo:
 
 
 candidates:
-  angle_threshold_deg: 5.0
+  angle_threshold_deg: 0.8  
   max_keypoints: 1000
-  min_candidates_needed: 20
-  max_new_candidates: 50
-  need_multiplier: 1.5
+  # Use the following 3 for parking
+  # min_candidates_needed: 20
+  # max_new_candidates: 50
+  # need_multiplier: 1.5
+  # Use the following 3 for the others
+  min_candidates_needed: 100
+  max_new_candidates: 350
+  need_multiplier: 2.0
 
 bin:
   use_binning: true
@@ -69,12 +74,12 @@ bin:
   num_bins_vertical: 4
   weight_keypoints: 0.7
   weight_candidates: 0.3
-  quality_level_decay: 0.7
-  max_iterations: 5
-  not_enough_ratio: 0.5
-  total_initial_keypoints_count: 400
+  quality_level_decay: 0.8   
+  max_iterations: 200        
+  not_enough_ratio: 0.3      
+  total_initial_keypoints_count: 500
 
 new_candidates:
-  quality_level: 0.01
-  min_distance: 20
-  oversample_factor: 1.5 
+  quality_level: 0.0001 # Own dataset & Malaga & Parking: 0.001 Kitti leicht besser mit 0.0001
+  min_distance: 15          
+  oversample_factor: 3.0   
