@@ -62,6 +62,21 @@ def bootstrap_VO(images_paths, cfg, camera_intrinsics, visualizer):
         
         landmarks_4d = cv2.triangulatePoints(M1, Mi, points_0.T, points_i.T)
         landmarks_3d = landmarks_4d[:3]/ landmarks_4d[3]
+        
+        # Filter landmarks behind camera (negative Z in camera frame 1)
+        # Check positive depth in camera frame 1
+        valid_depth_cam1 = landmarks_3d[2] > 0  # Z > 0 in first camera
+        
+        # Transform to camera i frame for second check
+        landmarks_3d_in_cam_i = R_iW @ landmarks_3d + i_t_iW
+        valid_depth_cam_i = landmarks_3d_in_cam_i[2] > 0
+        
+        valid_mask = valid_depth_cam1 & valid_depth_cam_i
+        landmarks_3d = landmarks_3d[:, valid_mask]
+        points_0 = points_0[valid_mask]
+        points_i = points_i[valid_mask]
+        prev_points = points_i.reshape(-1, 1, 2)
+        
         median_depth = np.median(landmarks_3d[2])
         print(f"Frame {frame_idx}: Tracked {points_i.shape[0]} keypoints, "
                     f"landmarks median_depth={median_depth:.3f}")

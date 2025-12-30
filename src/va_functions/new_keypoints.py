@@ -244,6 +244,11 @@ def add_new_landmarks(S, image, image_next, K, global_camera_poses, cfg: Optiona
 
     candidate_passed_bearing_angle_mask = bearing_angle > angle_threshold
 
+    # Debug: Log bearing angle statistics
+    if log_info and S["C"].shape[0] > 0:
+        print(f"  Bearing angles: min={bearing_angle.min():.2f}°, max={bearing_angle.max():.2f}°, "
+              f"mean={bearing_angle.mean():.2f}°, median={np.median(bearing_angle):.2f}°")
+        print(f"  Candidates passing angle threshold ({angle_threshold}°): {np.sum(candidate_passed_bearing_angle_mask)}/{len(bearing_angle)}")
 
     # Get ordered indicess for the best candidates to add (size based on angle)
     ordered_indices = np.argsort(bearing_angle[candidate_passed_bearing_angle_mask])[::-1]
@@ -292,13 +297,22 @@ def add_new_landmarks(S, image, image_next, K, global_camera_poses, cfg: Optiona
 
     # Add selected candidates to keypoints and landmarks
     new_keypoints = S["C"][candidates_to_add_mask]
-    new_landmarks = triangulate_new_landmarks(
+    new_landmarks, valid_mask = triangulate_new_landmarks(
         keypoints_prev=S["F"][candidates_to_add_mask],
         T_prev = S["T"][candidates_to_add_mask],
         keypoints_curr=S["C"][candidates_to_add_mask],
         T_curr = current_camera_pose,
         K=K
     )
+    
+    # Debug: Log cheirality check results
+    if log_info and len(valid_mask) > 0:
+        print(f"  Cheirality check: {np.sum(valid_mask)}/{len(valid_mask)} landmarks valid "
+              f"({100*np.sum(valid_mask)/len(valid_mask):.1f}%)")
+    
+    # Filter out invalid landmarks (behind camera)
+    new_keypoints = new_keypoints[valid_mask]
+    new_landmarks = new_landmarks[valid_mask]
 
     # Prune added candidates from candidate lists
     S["C"] = S["C"][~candidates_to_add_mask]
