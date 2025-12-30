@@ -134,7 +134,25 @@ def visual_odometry(cfg: VOConfig):
         if inliers is not None:
             inlier_mask[inliers.flatten()] = True
 
-       
+        # Debug: Calculate reprojection errors for all points
+        if cfg.cfg["pipeline"]["log"]:
+            
+            projected_points, _ = cv2.projectPoints(S["X"], rvec, t_CW, K, None)
+            projected_points = projected_points.reshape(-1, 2)
+            
+            # Calculate reprojection errors
+            reproj_errors = np.linalg.norm(P_next_candidates - projected_points, axis=1)
+            inlier_errors = reproj_errors[inlier_mask]
+            outlier_errors = reproj_errors[~inlier_mask]
+            
+            print(f"  PnP: {np.sum(inlier_mask)}/{num_points} inliers ({100*np.sum(inlier_mask)/num_points:.1f}%)")
+            print(f"  Reprojection errors - All: min={reproj_errors.min():.2f}px, max={reproj_errors.max():.2f}px, "
+                  f"mean={reproj_errors.mean():.2f}px, median={np.median(reproj_errors):.2f}px")
+            if len(inlier_errors) > 0:
+                print(f"  Reprojection errors - Inliers: mean={inlier_errors.mean():.2f}px, median={np.median(inlier_errors):.2f}px, max={inlier_errors.max():.2f}px")
+            if len(outlier_errors) > 0:
+                print(f"  Reprojection errors - Outliers: mean={outlier_errors.mean():.2f}px, median={np.median(outlier_errors):.2f}px")
+
         # prune lost landmarks and keypoints
         keypoints_next = P_next_candidates[inlier_mask]
         landmarks_next = S["X"][inlier_mask]
