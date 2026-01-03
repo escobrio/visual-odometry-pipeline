@@ -2,6 +2,7 @@ import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 from pathlib import Path
+import argparse
 
 from va_functions.data_loader import load_dataset, VOConfig
 from va_functions.bootstrap import bootstrap_VO
@@ -185,11 +186,21 @@ def visual_odometry(cfg: VOConfig):
 
 
 if __name__ == "__main__":
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(description='Visual Odometry Pipeline')
+    parser.add_argument('--dataset', type=int, choices=[0, 1, 2, 3],
+                        help='Dataset ID: 0=KITTI, 1=Malaga, 2=Parking, 3=own_datasets')
+    args = parser.parse_args()
 
     # Load config file
     script_dir = Path(__file__).parent
     config_path = script_dir / "config.yaml"    
     config = VOConfig(config_path)
+
+    # Override dataset ID if provided via command-line argument
+    if args.dataset is not None:
+        config.cfg["dataset"]["id"] = args.dataset
+        print(f"Dataset ID overridden to: {args.dataset}")
 
     visual_odometry(config)
 
