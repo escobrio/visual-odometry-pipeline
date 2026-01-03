@@ -52,12 +52,9 @@ After that download and extract the zip data and copy it into the provided data 
 .
 ```
 
-### 2. Workflow
-Put the actual code into seperate file in `src`, run all of this from jupiter notebooks in `notebooks`.
-
-
-### 3. TODO's
-
-- make parameter file, that contains all parameters 
-- Build a visualization 
-- How to improve the slame pipline (remove local jitter)
+### 2. Run the Visual Odometry Pipeline
+After activating the conda / mamba environment:
+```bash
+python src/main.py --dataset 0 # 0: KTTI, 1: Malaga, 2: Parking, 3: own_datasets
+```
+or you can set the dataset argument in the debug confiuration in .vscode/launch.json and run with Vscode's debugger.

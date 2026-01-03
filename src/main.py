@@ -218,13 +218,10 @@ if __name__ == "__main__":
 
     # Load config file
     script_dir = Path(__file__).parent
-    config_path = script_dir / "config.yaml"    
+    config_path = script_dir / f"config_{args.dataset}.yaml"
+    
     config = VOConfig(config_path)
-
-    # Override dataset ID if provided via command-line argument
-    if args.dataset is not None:
-        config.cfg["dataset"]["id"] = args.dataset
-        print(f"Dataset ID overridden to: {args.dataset}")
+    print(f"Loaded config from: {config_path}")
 
     visual_odometry(config)
 

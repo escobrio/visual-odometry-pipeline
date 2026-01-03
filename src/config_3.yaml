@@ -1,0 +1,80 @@
+dataset:
+  id: 3 # 0: KTTI, 1: Malaga, 2: Parking, 3: own_datasets
+  n_frames: 3000
+
+pipeline:
+  visualization: true
+  print_info: true
+  plot_tracked_points: true
+  log: true
+  record_video: true
+  video_path: "visualization/vo_visualization.mp4"
+  video_fps: 15
+  show_info_in_video: false
+  max_landmarks_to_visualize: 2000  # Nur die letzten N Landmarks plotten (Performance)  plot_only_active_landmarks: false  # true = nur getrackte, false = alle (Historie)
+initialization_part1:
+  frames: [0, 1, 2, 3]
+
+
+initialization_part2:
+  fraction_of_features_as_candidates: 0.1
+  auto_swap_xy_if_y_gt_x: true
+
+bootstrap:
+  fundamental:
+    reprojection_threshold: 3.0
+    probability_all_inliers: 0.99
+
+  features_by_dataset: # They are not used when we use binning
+    "0": { maxCorners: 1000, qualityLevel: 0.1,   minDistance: 6, blockSize: 6 }
+    "1": { maxCorners: 1000, qualityLevel: 0.001, minDistance: 5, blockSize: 5 }
+    "2": { maxCorners: 1000, qualityLevel: 0.001, minDistance: 5, blockSize: 5 }
+    "3": { maxCorners: 300, qualityLevel: 0.01, minDistance: 30, blockSize: 5 } 
+
+  lk:
+    winSize: [15, 15]
+    maxLevel: 3
+    criteria:
+      type: "EPS|COUNT"
+      maxCount: 30
+      epsilon: 0.03
+
+pose:
+  ransac:
+    max_pix_displacement: 15.0
+    confidence: 0.99
+    max_iterations: 1000
+
+vo:
+  lk:
+    winSize: [15, 15]
+    maxLevel: 3
+    criteria:
+      type: "EPS|COUNT"
+      maxCount: 10
+      epsilon: 0.03
+
+
+candidates:
+  angle_threshold_deg: 0.8  
+  max_keypoints: 1000
+  min_candidates_needed: 100
+  max_new_candidates: 350
+  need_multiplier: 2.0
+
+bin:
+  use_binning: true
+  detect_keypoints_in_bins: true
+  num_bins_horizontal: 4
+  num_bins_vertical: 4
+  weight_keypoints: 0.7
+  weight_candidates: 0.3
+  quality_level_decay: 0.8   
+  max_iterations: 200        
+  not_enough_ratio: 0.3      
+  total_initial_keypoints_count: 500
+
+new_candidates:
+  quality_level: 0.001 # Own dataset & Malaga & Parking: 0.001 Kitti leicht besser mit 0.0001
+  min_distance: 15          
+  oversample_factor: 3.0   

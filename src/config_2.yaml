@@ -1,5 +1,5 @@
 dataset:
-  id: 0 # 0: KTTI, 1: Malaga, 2: Parking, 3: own_datasets
+  id: 2 # 0: KTTI, 1: Malaga, 2: Parking, 3: own_datasets
   n_frames: 3000
 
 pipeline:
@@ -59,13 +59,9 @@ candidates:
   angle_threshold_deg: 0.8  
   max_keypoints: 1000
   # Use the following 3 for parking
-  # min_candidates_needed: 20
-  # max_new_candidates: 50
-  # need_multiplier: 1.5
-  # Use the following 3 for the others
-  min_candidates_needed: 100
-  max_new_candidates: 350
-  need_multiplier: 2.0
+  min_candidates_needed: 20
+  max_new_candidates: 50
+  need_multiplier: 1.5
 
 bin:
   use_binning: true
@@ -80,6 +76,6 @@ bin:
   total_initial_keypoints_count: 500
 
 new_candidates:
-  quality_level: 0.0001 # Own dataset & Malaga & Parking: 0.001 Kitti leicht besser mit 0.0001
+  quality_level: 0.001 # Own dataset & Malaga & Parking: 0.001 Kitti leicht besser mit 0.0001
   min_distance: 15          
   oversample_factor: 3.0   

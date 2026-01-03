@@ -48,10 +48,20 @@ def bootstrap_VO(images_paths, cfg, camera_intrinsics, visualizer):
         points_0 = points_0[(st.flatten()==1)].reshape(-1,2)
         prev_points = points_i.reshape(-1,1,2)
 
-        # Estimate pose via fundamental matrix
-        F, mask_fundamental = cv2.findFundamentalMat(points_0, points_i, cv2.FM_RANSAC, cfg.cfg["bootstrap"]["fundamental"]["reprojection_threshold"], cfg.cfg["bootstrap"]["fundamental"]["probability_all_inliers"])
-        E = camera_intrinsics.T @ F @ camera_intrinsics
-        retval, R_iW, i_t_iW, inlier_mask = cv2.recoverPose(E, points_0, points_i, camera_intrinsics, mask=mask_fundamental) # Change of basis frame_0 to frame_i | expresses frame_0 in frame_i
+        # # Estimate pose via fundamental matrix
+        # F, mask_fundamental = cv2.findFundamentalMat(points_0, points_i, cv2.FM_RANSAC, cfg.cfg["bootstrap"]["fundamental"]["reprojection_threshold"], cfg.cfg["bootstrap"]["fundamental"]["probability_all_inliers"])
+        # E = camera_intrinsics.T @ F @ camera_intrinsics
+        # retval, R_iW, i_t_iW, inlier_mask = cv2.recoverPose(E, points_0, points_i, camera_intrinsics, mask=mask_fundamental)
+
+        # Estimate pose via essential Matrix
+        E, mask_essential = cv2.findEssentialMat(points_0, 
+                                                 points_i, 
+                                                 camera_intrinsics, 
+                                                 method=cv2.RANSAC, 
+                                                 prob=cfg.cfg["bootstrap"]["fundamental"]["probability_all_inliers"], 
+                                                 threshold=cfg.cfg["bootstrap"]["fundamental"]["reprojection_threshold"])
+        retval, R_iW, i_t_iW, inlier_mask = cv2.recoverPose(E, points_0, points_i, camera_intrinsics, mask=mask_essential) # Change of basis frame_0 to frame_i | expresses frame_0 in frame_i
+
 
         # Triangulate landmarks
         M1 = camera_intrinsics @ np.hstack((np.eye(3), np.zeros((3,1))))
