@@ -16,9 +16,11 @@ class VOVisualizer:
                  record_video: bool = False,
                  video_path: str = "vo_visualization.mp4",
                  fps: int = 20,
-                 show_info_in_video: bool = True):
+                 show_info_in_video: bool = True,
+                 max_landmarks: int = 2000):
         plt.ion()
         self.fig = plt.figure(figsize=(14, 6))
+        self._max_landmarks = max_landmarks  
 
          # --- video recording setup ---
         self._record_video = record_video
@@ -147,10 +149,16 @@ class VOVisualizer:
     def update_3d_view(self, landmarks: np.ndarray, poses: List[np.ndarray]):
         """Update 3D landmarks and camera trajectory."""
         if landmarks.size:
+            # Limit to last N landmarks for performance
+            if self._max_landmarks > 0 and landmarks.shape[0] > self._max_landmarks:
+                plotting_landmarks = landmarks[-self._max_landmarks:]
+            else:
+                plotting_landmarks = landmarks
+            
             self.landmarks_scatter._offsets3d = (
-                landmarks[:, 0],
-                landmarks[:, 1],
-                landmarks[:, 2],
+                plotting_landmarks[:, 0],
+                plotting_landmarks[:, 1],
+                plotting_landmarks[:, 2],
             )
         
         if len(poses) > 0:

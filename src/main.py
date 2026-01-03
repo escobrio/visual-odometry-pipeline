@@ -2,6 +2,7 @@ import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 from pathlib import Path
+import argparse
 
 from va_functions.data_loader import load_dataset, VOConfig
 from va_functions.bootstrap import bootstrap_VO
@@ -103,9 +104,10 @@ def visual_odometry(cfg: VOConfig):
     print(format_info(info, header="Initial State S"))
 
     image = cv2.imread(images_paths[frame_idx], cv2.IMREAD_GRAYSCALE)
+    n_frames = min(cfg.n_frames, last_frame)
 
     # Full loop for part 2
-    for frame_idx in range(frame_idx + 1, cfg.n_frames):
+    for frame_idx in range(frame_idx + 1, n_frames):
         # get new image
         image_next = cv2.imread(images_paths[frame_idx], cv2.IMREAD_GRAYSCALE)
 
@@ -124,9 +126,34 @@ def visual_odometry(cfg: VOConfig):
         
         # Use PnP RANSAC to estimate the new camera pose
         # TODO not sure if we are alowed to use cv2.solvePnPRansac function, I think we can only use cv2 fundamental and essential?
-        retval, rvec, t_new_to_old, inliers = cv2.solvePnPRansac(objectPoints=S["X"], imagePoints=P_next_candidates, distCoeffs=None, cameraMatrix=K)
-        R_new_to_old, _ = cv2.Rodrigues(rvec)
-        inlier_mask = inliers.reshape(-1)
+        # solvePnPRansac returns transformation from world to camera (T_CW)
+        retval, rvec, t_CW, inliers = cv2.solvePnPRansac(objectPoints=S["X"], imagePoints=P_next_candidates, distCoeffs=None, cameraMatrix=K)
+        R_CW, _ = cv2.Rodrigues(rvec)
+        
+        # Create boolean mask from inlier indices
+        num_points = len(S["X"])
+        inlier_mask = np.zeros(num_points, dtype=bool)
+        if inliers is not None:
+            inlier_mask[inliers.flatten()] = True
+
+        # Debug: Calculate reprojection errors for all points
+        if cfg.cfg["pipeline"]["log"]:
+            
+            projected_points, _ = cv2.projectPoints(S["X"], rvec, t_CW, K, None)
+            projected_points = projected_points.reshape(-1, 2)
+            
+            # Calculate reprojection errors
+            reproj_errors = np.linalg.norm(P_next_candidates - projected_points, axis=1)
+            inlier_errors = reproj_errors[inlier_mask]
+            outlier_errors = reproj_errors[~inlier_mask]
+            
+            print(f"  PnP: {np.sum(inlier_mask)}/{num_points} inliers ({100*np.sum(inlier_mask)/num_points:.1f}%)")
+            print(f"  Reprojection errors - All: min={reproj_errors.min():.2f}px, max={reproj_errors.max():.2f}px, "
+                  f"mean={reproj_errors.mean():.2f}px, median={np.median(reproj_errors):.2f}px")
+            if len(inlier_errors) > 0:
+                print(f"  Reprojection errors - Inliers: mean={inlier_errors.mean():.2f}px, median={np.median(inlier_errors):.2f}px, max={inlier_errors.max():.2f}px")
+            if len(outlier_errors) > 0:
+                print(f"  Reprojection errors - Outliers: mean={outlier_errors.mean():.2f}px, median={np.median(outlier_errors):.2f}px")
 
         # prune lost landmarks and keypoints
         keypoints_next = P_next_candidates[inlier_mask]
@@ -138,12 +165,11 @@ def visual_odometry(cfg: VOConfig):
         S["X"] = landmarks_next
 
         # Store the current camera pose globally
-        # Twc_2 = Twc_1 * T_c1_c2
-        Twc_1 = global_camera_poses[-1]
-        # build new relative transformation matrix T_
-        T_c2_c1 = np.vstack((np.hstack((R_new_to_old, t_new_to_old)), [0, 0, 0, 1]))
-        T_c1_c2 = np.linalg.inv(T_c2_c1)
-        current_camera_pose = T_c1_c2
+        # Build T_CW (camera from world) from PnP result
+        T_CW = np.vstack((np.hstack((R_CW, t_CW)), [0, 0, 0, 1]))
+        # Convert to T_WC (world from camera) for global pose
+        T_WC_current = np.linalg.inv(T_CW)
+        current_camera_pose = T_WC_current
         global_camera_poses.append(current_camera_pose)
 
         # Triangulate new landmarks and maintain candidates
@@ -158,9 +184,9 @@ def visual_odometry(cfg: VOConfig):
         info["num_candidates"] = S["C"].shape[0]
         info["new_landmarks"] = info_new_landmarks
         info["camera_pose"] = {
-            "t_x": t_new_to_old[0,0],
-            "t_y": t_new_to_old[1,0],
-            "t_z": t_new_to_old[2,0]}
+            "t_x": T_WC_current[0, 3],
+            "t_y": T_WC_current[1, 3],
+            "t_z": T_WC_current[2, 3]}
         fromated_info_string = format_info(info, header=f"Frame {frame_idx} - New Landmarks Info")
         print(fromated_info_string)
 
@@ -184,11 +210,18 @@ def visual_odometry(cfg: VOConfig):
 
 
 if __name__ == "__main__":
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(description='Visual Odometry Pipeline')
+    parser.add_argument('--dataset', type=int, choices=[0, 1, 2, 3],
+                        help='Dataset ID: 0=KITTI, 1=Malaga, 2=Parking, 3=own_datasets')
+    args = parser.parse_args()
 
     # Load config file
     script_dir = Path(__file__).parent
-    config_path = script_dir / "config.yaml"    
+    config_path = script_dir / f"config_{args.dataset}.yaml"
+    
     config = VOConfig(config_path)
+    print(f"Loaded config from: {config_path}")
 
     visual_odometry(config)
 

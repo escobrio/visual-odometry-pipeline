@@ -21,6 +21,7 @@ def triangulate_new_landmarks(keypoints_prev, T_prev, keypoints_curr, T_curr, K)
         K: Camera intrinsic matrix
     Output:
         points_3d: n x 3D landmarks corresponding to the triangulated keypoints
+        valid_mask: Boolean mask indicating which landmarks are valid (positive depth in both cameras)
     '''
     # TODO for now via for loop, later vectorize manual 
     # (np.triangulatePoints does not support batch processing for different projection matrices)
@@ -28,11 +29,25 @@ def triangulate_new_landmarks(keypoints_prev, T_prev, keypoints_curr, T_curr, K)
     N = keypoints_prev.shape[0]
     P_curr = pose_WC_to_projection(T_curr, K)
 
-    points_3d = np.zeros((N, 3))
+    points_3d_world = np.zeros((N, 3))
+    valid_mask = np.zeros(N, dtype=bool)
 
     for i in range(N):
         P_prev = pose_WC_to_projection(T_prev[i], K)
         points_hom = cv2.triangulatePoints(P_prev, P_curr, keypoints_prev[i].reshape(2, 1), keypoints_curr[i].reshape(2, 1))
-        points_3d[i] = cv2.convertPointsFromHomogeneous(points_hom.T).reshape(-1, 3)
+        point_3d_world = cv2.convertPointsFromHomogeneous(points_hom.T).reshape(-1, 3)[0]
+        
+        # Check: Points have to lie infront of the camera 
+        T_CW_prev = np.linalg.inv(T_prev[i])
+        point_in_prev_cam = (T_CW_prev[:3, :3] @ point_3d_world + T_CW_prev[:3, 3])
+        
+        T_CW_curr = np.linalg.inv(T_curr)
+        point_in_curr_cam = (T_CW_curr[:3, :3] @ point_3d_world + T_CW_curr[:3, 3])
+        
+        if point_in_prev_cam[2] > 0 and point_in_curr_cam[2] > 0:
+            points_3d_world[i] = point_3d_world
+            valid_mask[i] = True
+        else:
+            points_3d_world[i] = [0, 0, 0]
 
-    return points_3d
+    return points_3d_world, valid_mask

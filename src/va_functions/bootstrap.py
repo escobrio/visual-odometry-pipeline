@@ -48,6 +48,12 @@ def bootstrap_VO(images_paths, cfg, camera_intrinsics, visualizer):
         points_0 = points_0[(st.flatten()==1)].reshape(-1,2)
         prev_points = points_i.reshape(-1,1,2)
 
+        # # Estimate pose via fundamental matrix
+        # F, mask_fundamental = cv2.findFundamentalMat(points_0, points_i, cv2.FM_RANSAC, cfg.cfg["bootstrap"]["fundamental"]["reprojection_threshold"], cfg.cfg["bootstrap"]["fundamental"]["probability_all_inliers"])
+        # E = camera_intrinsics.T @ F @ camera_intrinsics
+        # retval, R_iW, i_t_iW, inlier_mask = cv2.recoverPose(E, points_0, points_i, camera_intrinsics, mask=mask_fundamental)
+
+        # Estimate pose via essential Matrix
         E, mask_essential = cv2.findEssentialMat(points_0, 
                                                  points_i, 
                                                  camera_intrinsics, 
@@ -56,12 +62,28 @@ def bootstrap_VO(images_paths, cfg, camera_intrinsics, visualizer):
                                                  threshold=cfg.cfg["bootstrap"]["fundamental"]["reprojection_threshold"])
         retval, R_iW, i_t_iW, inlier_mask = cv2.recoverPose(E, points_0, points_i, camera_intrinsics, mask=mask_essential) # Change of basis frame_0 to frame_i | expresses frame_0 in frame_i
 
+
         # Triangulate landmarks
         M1 = camera_intrinsics @ np.hstack((np.eye(3), np.zeros((3,1))))
         Mi = camera_intrinsics @ np.hstack((R_iW, i_t_iW))
         
         landmarks_4d = cv2.triangulatePoints(M1, Mi, points_0.T, points_i.T)
         landmarks_3d = landmarks_4d[:3]/ landmarks_4d[3]
+        
+        # Filter landmarks behind camera (negative Z in camera frame 1)
+        # Check positive depth in camera frame 1
+        valid_depth_cam1 = landmarks_3d[2] > 0  # Z > 0 in first camera
+        
+        # Transform to camera i frame for second check
+        landmarks_3d_in_cam_i = R_iW @ landmarks_3d + i_t_iW
+        valid_depth_cam_i = landmarks_3d_in_cam_i[2] > 0
+        
+        valid_mask = valid_depth_cam1 & valid_depth_cam_i
+        landmarks_3d = landmarks_3d[:, valid_mask]
+        points_0 = points_0[valid_mask]
+        points_i = points_i[valid_mask]
+        prev_points = points_i.reshape(-1, 1, 2)
+        
         median_depth = np.median(landmarks_3d[2])
         print(f"Frame {frame_idx}: Tracked {points_i.shape[0]} keypoints, "
                     f"landmarks median_depth={median_depth:.3f}")
