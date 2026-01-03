@@ -103,9 +103,10 @@ def visual_odometry(cfg: VOConfig):
     print(format_info(info, header="Initial State S"))
 
     image = cv2.imread(images_paths[frame_idx], cv2.IMREAD_GRAYSCALE)
+    n_frames = min(cfg.n_frames, last_frame)
 
     # Full loop for part 2
-    for frame_idx in range(frame_idx + 1, cfg.n_frames):
+    for frame_idx in range(frame_idx + 1, n_frames):
         # get new image
         image_next = cv2.imread(images_paths[frame_idx], cv2.IMREAD_GRAYSCALE)
 
