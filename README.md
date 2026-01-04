@@ -58,3 +58,7 @@ After activating the conda / mamba environment:
 python src/main.py --dataset 0 # 0: KTTI, 1: Malaga, 2: Parking, 3: own_datasets
 ```
 or you can set the dataset argument in the debug confiuration in .vscode/launch.json and run with Vscode's debugger.
+
+
+The recordings are startet outomatically. 
+    We performed the VO pipeline and the recordings on a laptop with an Intel i7-8550U CPU wich has a maximum frequency of 4.0 GHz, while durring the pocessing of the VO pipeline it was running at 2.6 GHz with 16 threads. The laptop also has 16 GB of RAM.
