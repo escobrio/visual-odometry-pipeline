@@ -1,26 +1,17 @@
+# Visual Odometry Pipeline
+This repository aims to be a clean rewrite of the final project of the course "Vision Algorithms for Mobile Robotics" at UZH.
+
 ## Environment Setup
 
-How to use the reproducible Conda/Mamba environment defined in `environment.yml`.
-
-
-### 1. Create the Environment
-
-**Using Mamba:**
+Install Miniforge https://conda-forge.org/download/. 
+Create and activate the environment:
 ```bash
-mamba env create -f environment.yml # create env
-mamba env update -f environment.yml --prune # update env after change
+mamba env create -f environment.yml
+mamba activate visual-odometry
 ```
 
-**Using Conda:**
-```bash
-conda env create -f environment.yml # creates env
-conda env update -f environment.yml --prune # update env after change
-```
 
-#### 1.2 Change the environment
-If you want to add packages, do so in `requirements.txt`. For now they are the requirements from the exercises.
-
-#### 1.3 Download the necessary data.
+## Download datasets
 Create new folder for video data:
 ```bash
 mkdir data
@@ -52,7 +43,7 @@ After that download and extract the zip data and copy it into the provided data 
 .
 ```
 
-### 2. Run the Visual Odometry Pipeline
+## Run the Visual Odometry Pipeline
 After activating the conda / mamba environment:
 ```bash
 python src/main.py --dataset 0 # 0: KTTI, 1: Malaga, 2: Parking, 3: own_datasets

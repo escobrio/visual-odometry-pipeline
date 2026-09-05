@@ -1,4 +1,4 @@
-name: va_project
+name: visual-odometry
 channels: 
   - conda-forge
   - defaults
