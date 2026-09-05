@@ -3,8 +3,8 @@ import cv2
 from typing import Any, Dict, Optional
 
 
-from va_functions.triangulation import triangulate_new_landmarks
-from va_functions.binning import _weighted_bin_counts, _bin_identifier, _allocate_quota, _select_candidates_with_redistribution, _detect_keypoints_per_bin
+from visual_odometry.triangulation import triangulate_new_landmarks
+from visual_odometry.binning import _weighted_bin_counts, _bin_identifier, _allocate_quota, _select_candidates_with_redistribution, _detect_keypoints_per_bin
 
 def detect_new_candidate_keypoints(image, 
                                    existing_keypoints: Optional[np.ndarray] | None, 

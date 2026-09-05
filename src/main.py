@@ -4,12 +4,12 @@ import matplotlib.pyplot as plt
 from pathlib import Path
 import argparse
 
-from va_functions.data_loader import load_dataset, VOConfig
-from va_functions.bootstrap import bootstrap_VO
-from va_functions.new_keypoints import add_new_landmarks
-from va_functions.visualizer import VOVisualizer
-from va_functions.print_ import format_info
-from va_functions.new_keypoints import detect_new_candidate_keypoints
+from visual_odometry.data_loader import load_dataset, VOConfig
+from visual_odometry.bootstrap import bootstrap_VO
+from visual_odometry.new_keypoints import add_new_landmarks
+from visual_odometry.visualizer import VOVisualizer
+from visual_odometry.print_ import format_info
+from visual_odometry.new_keypoints import detect_new_candidate_keypoints
 
 
 def visual_odometry(cfg: VOConfig):
@@ -20,7 +20,7 @@ def visual_odometry(cfg: VOConfig):
     - Real-time 3D visualization
     """
 
-    print(f"Loading dataset {config.dataset_id}")
+    print(f"Loading dataset {cfg.dataset_id}")
     images_paths, last_frame, K = load_dataset(cfg.dataset_id)
 
     # Initialize visualization
@@ -208,8 +208,7 @@ def visual_odometry(cfg: VOConfig):
         plt.ioff()
         plt.show()
 
-
-if __name__ == "__main__":
+def main():
     # Parse command-line arguments
     parser = argparse.ArgumentParser(description='Visual Odometry Pipeline')
     parser.add_argument('--dataset', type=int, choices=[0, 1, 2, 3],
@@ -226,3 +225,6 @@ if __name__ == "__main__":
     visual_odometry(config)
 
     print("Visual odometry pipeline completed successfully")
+
+if __name__ == "__main__":
+    main()

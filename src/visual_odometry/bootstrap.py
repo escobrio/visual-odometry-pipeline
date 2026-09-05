@@ -1,7 +1,7 @@
 import numpy as np
 import cv2
 
-from va_functions.new_keypoints import _allocate_quota, _detect_keypoints_per_bin
+from visual_odometry.new_keypoints import _allocate_quota, _detect_keypoints_per_bin
 
 
 def bootstrap_VO(images_paths, cfg, camera_intrinsics, visualizer):
