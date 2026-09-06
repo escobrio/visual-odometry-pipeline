@@ -1,7 +1,11 @@
+import logging
+
 import cv2
 import numpy as np
 
 from visual_odometry.new_keypoints import _allocate_quota, _detect_keypoints_per_bin
+
+logger = logging.getLogger(__name__)
 
 
 def bootstrap_VO(images_paths, cfg, camera_intrinsics, visualizer):
@@ -92,7 +96,7 @@ def bootstrap_VO(images_paths, cfg, camera_intrinsics, visualizer):
         prev_points = points_i.reshape(-1, 1, 2)
 
         median_depth = np.median(landmarks_3d[2])
-        print(
+        logger.info(
             f"Frame {frame_idx}: Tracked {points_i.shape[0]} keypoints, "
             f"landmarks median_depth={median_depth:.3f}"
         )
@@ -110,7 +114,7 @@ def bootstrap_VO(images_paths, cfg, camera_intrinsics, visualizer):
     R_Wi = R_iW.T
     W_t_Wi = -R_Wi @ i_t_iW
 
-    print(
+    logger.info(
         f"Bootstrap complete. Pose translation norm: {np.linalg.norm(W_t_Wi):.3f},\n"
         f"Rotation:\n{R_Wi}\nTranslation:\n{W_t_Wi}"
     )

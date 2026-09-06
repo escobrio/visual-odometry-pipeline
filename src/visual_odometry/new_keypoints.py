@@ -1,3 +1,4 @@
+import logging
 from typing import Any, Dict, Optional
 
 import cv2
@@ -11,6 +12,8 @@ from visual_odometry.binning import (
     _weighted_bin_counts,
 )
 from visual_odometry.triangulation import triangulate_new_landmarks
+
+logger = logging.getLogger(__name__)
 
 
 def detect_new_candidate_keypoints(
@@ -297,11 +300,11 @@ def add_new_landmarks(
 
     # Debug: Log bearing angle statistics
     if log_info and S["C"].shape[0] > 0:
-        print(
+        logger.info(
             f"  Bearing angles: min={bearing_angle.min():.2f}°, max={bearing_angle.max():.2f}°, "
             f"mean={bearing_angle.mean():.2f}°, median={np.median(bearing_angle):.2f}°"
         )
-        print(
+        logger.info(
             f"  Candidates passing angle threshold ({angle_threshold}°): {np.sum(candidate_passed_bearing_angle_mask)}/{len(bearing_angle)}"
         )
 
@@ -390,7 +393,7 @@ def add_new_landmarks(
 
     # Debug: Log cheirality check results
     if log_info and len(valid_mask) > 0:
-        print(
+        logger.info(
             f"  Cheirality check: {np.sum(valid_mask)}/{len(valid_mask)} landmarks valid "
             f"({100 * np.sum(valid_mask) / len(valid_mask):.1f}%)"
         )

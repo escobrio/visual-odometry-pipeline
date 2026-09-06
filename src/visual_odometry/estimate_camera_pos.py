@@ -1,7 +1,10 @@
+import logging
 from typing import Any, Dict, Optional
 
 import cv2
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 
 def RANSAC_P3P(P, P_next, K, cfg: Optional[Dict[str, Any]] = None):
@@ -51,6 +54,6 @@ def RANSAC_P3P(P, P_next, K, cfg: Optional[Dict[str, Any]] = None):
         )
         inlier_mask = inlier_mask_cv.flatten().astype(bool)
     else:
-        print("Not enough inliers found for pose estimation.")
+        logger.info("Not enough inliers found for pose estimation.")
 
     return R_C_W, t_C_W, inlier_mask

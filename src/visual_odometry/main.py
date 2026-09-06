@@ -1,4 +1,5 @@
 import argparse
+import logging
 from pathlib import Path
 
 import cv2
@@ -14,6 +15,8 @@ from visual_odometry.new_keypoints import (
 from visual_odometry.print_ import format_info
 from visual_odometry.visualizer import VOVisualizer
 
+logger = logging.getLogger(__name__)
+
 
 def visual_odometry(cfg: VOConfig):
     """
@@ -23,7 +26,7 @@ def visual_odometry(cfg: VOConfig):
     - Real-time 3D visualization
     """
 
-    print(f"Loading dataset {cfg.dataset_id}")
+    logger.info(f"Loading dataset {cfg.dataset_id}")
     images_paths, last_frame, K = load_dataset(cfg.dataset_id)
 
     # Initialize visualization
@@ -53,7 +56,7 @@ def visual_odometry(cfg: VOConfig):
         y_max = np.max(keypoints_i[:, 1])
 
         if y_max > x_max:
-            print("Swapping keypoints x and y")
+            logger.info("Swapping keypoints x and y")
             keypoints_i = keypoints_i[:, [1, 0]]
 
     # Sample keypoints as candidate keypoints
@@ -117,7 +120,7 @@ def visual_odometry(cfg: VOConfig):
         "num_candidates": S["C"].shape[0],
     }
 
-    print(format_info(info, header="Initial State S"))
+    logger.info(format_info(info, header="Initial State S"))
 
     image = cv2.imread(images_paths[frame_idx], cv2.IMREAD_GRAYSCALE)
     n_frames = min(cfg.n_frames, last_frame)
@@ -172,19 +175,19 @@ def visual_odometry(cfg: VOConfig):
             inlier_errors = reproj_errors[inlier_mask]
             outlier_errors = reproj_errors[~inlier_mask]
 
-            print(
+            logger.info(
                 f"  PnP: {np.sum(inlier_mask)}/{num_points} inliers ({100 * np.sum(inlier_mask) / num_points:.1f}%)"
             )
-            print(
+            logger.info(
                 f"  Reprojection errors - All: min={reproj_errors.min():.2f}px, max={reproj_errors.max():.2f}px, "
                 f"mean={reproj_errors.mean():.2f}px, median={np.median(reproj_errors):.2f}px"
             )
             if len(inlier_errors) > 0:
-                print(
+                logger.info(
                     f"  Reprojection errors - Inliers: mean={inlier_errors.mean():.2f}px, median={np.median(inlier_errors):.2f}px, max={inlier_errors.max():.2f}px"
                 )
             if len(outlier_errors) > 0:
-                print(
+                logger.info(
                     f"  Reprojection errors - Outliers: mean={outlier_errors.mean():.2f}px, median={np.median(outlier_errors):.2f}px"
                 )
 
@@ -226,9 +229,9 @@ def visual_odometry(cfg: VOConfig):
         fromated_info_string = format_info(
             info, header=f"Frame {frame_idx} - New Landmarks Info"
         )
-        print(fromated_info_string)
+        logger.info(fromated_info_string)
 
-        print("shape of all landmarks: ", global_landmarks.shape)
+        logger.info(f"shape of all landmarks: {global_landmarks.shape}")
 
         if cfg.visualize:
             # visualizer.update_image_view(image_next, keypoints_next, P_prev_inliers, frame_idx)
@@ -250,6 +253,10 @@ def visual_odometry(cfg: VOConfig):
 
 
 def main():
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    )
 
     parser = argparse.ArgumentParser(description="Visual Odometry Pipeline")
     parser.add_argument(
@@ -265,13 +272,12 @@ def main():
     PROJECT_ROOT = Path(__file__).resolve().parents[2]
     CONFIG_DIR = PROJECT_ROOT / "configs"
     config_path = CONFIG_DIR / f"config_{args.dataset}.yaml"
-
     config = VOConfig(config_path)
-    print(f"Loaded config from: {config_path}")
+    logger.info(f"Loaded config from: {config_path}")
 
     visual_odometry(config)
 
-    print("Visual odometry pipeline completed successfully")
+    logger.info("Visual odometry pipeline completed successfully")
 
 
 if __name__ == "__main__":
