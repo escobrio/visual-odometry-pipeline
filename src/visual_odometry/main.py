@@ -216,8 +216,9 @@ def main():
     args = parser.parse_args()
 
     # Load config file
-    script_dir = Path(__file__).parent
-    config_path = script_dir / f"config_{args.dataset}.yaml"
+    PROJECT_ROOT = Path(__file__).resolve().parents[2]
+    CONFIG_DIR = PROJECT_ROOT / "configs"
+    config_path = CONFIG_DIR / f"config_{args.dataset}.yaml"
     
     config = VOConfig(config_path)
     print(f"Loaded config from: {config_path}")
