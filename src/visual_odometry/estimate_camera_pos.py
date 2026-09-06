@@ -1,11 +1,11 @@
-
-import numpy as np
-import cv2
 from typing import Any, Dict, Optional
+
+import cv2
+import numpy as np
 
 
 def RANSAC_P3P(P, P_next, K, cfg: Optional[Dict[str, Any]] = None):
-    '''
+    """
     Input:
         P: 2D keypoints in previous frame
         P_next: 2D keypoints in current frame
@@ -15,7 +15,7 @@ def RANSAC_P3P(P, P_next, K, cfg: Optional[Dict[str, Any]] = None):
         R: Estimated rotation matrix from previous to current frame
         t: Estimated translation vector from previous to current frame (has unit length due to scale ambiguity)
         inliers: Boolean mask of inliers used for pose estimation
-    '''
+    """
 
     params = (cfg or {}).get("pose", {}).get("ransac", {})
     max_pix_displacement = params.get("max_pix_displacement", 8.0)
@@ -35,25 +35,22 @@ def RANSAC_P3P(P, P_next, K, cfg: Optional[Dict[str, Any]] = None):
     # print("P_next shape: ", P_next.shape)
     # Use cv2.findFundamentalMat to find F (use RANSAC internally)
     F, inlier_mask_cv = cv2.findFundamentalMat(
-        P, 
-        P_next, 
+        P,
+        P_next,
         method=cv2.FM_RANSAC,
         ransacReprojThreshold=max_pix_displacement,
         confidence=confidence,
-        maxIters=max_iterations
+        maxIters=max_iterations,
     )
 
     # Recover R and t from F using cv2.recoverPose
     if F is not None and np.count_nonzero(inlier_mask_cv) >= 4:
         E = K.T @ F @ K  # Essential matrix
         _, R_C_W, t_C_W, inlier_mask_recover = cv2.recoverPose(
-            E, 
-            P, 
-            P_next, 
-            cameraMatrix=K
+            E, P, P_next, cameraMatrix=K
         )
         inlier_mask = inlier_mask_cv.flatten().astype(bool)
     else:
-        print("Not enough inliers found for pose estimation.") 
+        print("Not enough inliers found for pose estimation.")
 
     return R_C_W, t_C_W, inlier_mask
