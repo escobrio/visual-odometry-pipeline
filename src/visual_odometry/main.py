@@ -32,7 +32,7 @@ def main():
     logger.info(f"Loaded config from: {config_path}")
 
     pipeline = VisualOdometryPipeline(config)
-    pipeline.visual_odometry()
+    pipeline.run()
 
     logger.info("Visual odometry pipeline completed successfully")
 

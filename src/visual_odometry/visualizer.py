@@ -1,9 +1,12 @@
+import logging
 from typing import List, Optional
 
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.animation import FFMpegWriter
 from matplotlib.gridspec import GridSpec
+
+logger = logging.getLogger(__name__)
 
 
 class VOVisualizer:
