@@ -3,7 +3,7 @@ import logging
 from pathlib import Path
 
 from visual_odometry.data_loader import VOConfig
-from visual_odometry.pipeline import visual_odometry
+from visual_odometry.pipeline import VisualOdometryPipeline
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +31,8 @@ def main():
     config = VOConfig(config_path)
     logger.info(f"Loaded config from: {config_path}")
 
-    visual_odometry(config)
+    pipeline = VisualOdometryPipeline(config)
+    pipeline.visual_odometry()
 
     logger.info("Visual odometry pipeline completed successfully")
 
