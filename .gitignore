@@ -22,4 +22,4 @@ Thumbs.db
 # Visualization videos
 visualization/
 
-va_functions.egg-info/
+src/visual_odometry.egg-info/

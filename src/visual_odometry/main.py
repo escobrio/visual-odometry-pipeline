@@ -211,7 +211,7 @@ def visual_odometry(cfg: VOConfig):
 def main():
     # Parse command-line arguments
     parser = argparse.ArgumentParser(description='Visual Odometry Pipeline')
-    parser.add_argument('--dataset', type=int, choices=[0, 1, 2, 3],
+    parser.add_argument('--dataset', type=int, choices=[0, 1, 2, 3], required=True,
                         help='Dataset ID: 0=KITTI, 1=Malaga, 2=Parking, 3=own_datasets')
     args = parser.parse_args()
 
