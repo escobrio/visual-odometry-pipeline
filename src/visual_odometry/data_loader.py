@@ -76,6 +76,7 @@ def load_dataset(ds):
         ])
     else:
         raise ValueError("Invalid dataset index")
+    assert  len(left_images) > 0, "No images found!"
     return left_images, last_frame, K
     
 
