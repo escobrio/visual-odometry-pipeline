@@ -24,25 +24,16 @@ class VisualOdometryPipeline:
         self.global_camera_poses = None
         self.global_landmarks = None
 
-    def initialize(self):
-        logger.info(f"Loading dataset {self.cfg.dataset_id}")
-
-        # Initialize visualization
-        first_image = cv2.imread(self.images_paths[0], cv2.IMREAD_GRAYSCALE)
-        if self.cfg.visualize:
-            self.visualizer = VOVisualizer(
-                first_image,
-                record_video=self.cfg["pipeline"]["record_video"],
-                video_path=self.cfg["pipeline"]["video_path"],
-                fps=self.cfg["pipeline"]["video_fps"],
-                show_info_in_video=self.cfg["pipeline"]["show_info_in_video"],
-            )
-        # Part I: Bootstrap VO pipeline
-        Rot, Translation, landmarks_i, keypoints_i, frame_idx = bootstrap_VO(
-            self.images_paths, self.cfg, self.K, self.visualizer
+    def _init_visualizer(self, first_image):
+        self.visualizer = VOVisualizer(
+            first_image,
+            record_video=self.cfg["pipeline"]["record_video"],
+            video_path=self.cfg["pipeline"]["video_path"],
+            fps=self.cfg["pipeline"]["video_fps"],
+            show_info_in_video=self.cfg["pipeline"]["show_info_in_video"],
         )
-        initial_camera_pose = np.vstack((np.hstack((Rot, Translation)), [0, 0, 0, 1]))
 
+    def _initialize_candidate_keypoints(self, keypoints_i, landmarks_i, first_image):
         # Part II: continuous VO module that processes each frame Ii,
         # estimates the current pose of the camera T i W C using the existing set of landmarks
         # and regularly triangulates new landmarks.
@@ -94,9 +85,32 @@ class VisualOdometryPipeline:
             candidate_camera_poses_i = np.repeat(
                 np.eye(4)[np.newaxis, :, :], candidate_keypoints_i.shape[0], axis=0
             )
+        return (
+            candidate_keypoints_i,
+            candidate_first_observation_i,
+            candidate_camera_poses_i,
+        )
+
+    def initialize(self):
+        logger.info(f"Loading dataset {self.cfg.dataset_id}")
+
+        first_image = cv2.imread(self.images_paths[0], cv2.IMREAD_GRAYSCALE)
+        if self.cfg.visualize:
+            self._init_visualizer(first_image)
+
+        # Part I: Bootstrap VO pipeline
+        Rot, Translation, landmarks_i, keypoints_i, frame_idx = bootstrap_VO(
+            self.images_paths, self.cfg, self.K, self.visualizer
+        )
+        initial_camera_pose = np.vstack((np.hstack((Rot, Translation)), [0, 0, 0, 1]))
+
+        (
+            candidate_keypoints_i,
+            candidate_first_observation_i,
+            candidate_camera_poses_i,
+        ) = self._initialize_candidate_keypoints(keypoints_i, landmarks_i, first_image)
 
         # State dict
-        S = dict()
         S = {
             "P": keypoints_i,
             "X": landmarks_i,
@@ -105,11 +119,8 @@ class VisualOdometryPipeline:
             "T": candidate_camera_poses_i,
         }
 
-        # Initialize global camera pose storage
-        # TODO flaten all of this to 12 elements
+        # Initialize global camera pose and landmarks storage
         self.global_camera_poses = [initial_camera_pose]
-
-        # Initialize global landmarks storage
         self.global_landmarks = S["X"].copy()
 
         # Initialize info printing
