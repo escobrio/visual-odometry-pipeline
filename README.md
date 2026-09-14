@@ -43,6 +43,11 @@ After that download and extract the zip data and copy it into the provided data 
 .
 ```
 
+## Running Tests
+```
+pytest -s -v
+```
+
 ## Run the Visual Odometry Pipeline
 After activating the conda / mamba environment:
 ```bash

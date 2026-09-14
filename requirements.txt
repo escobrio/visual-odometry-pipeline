@@ -5,4 +5,4 @@ matplotlib>=3.8,<4
 Pillow==9.3.0
 typing-extensions>=4.6,<5
 PyYAML>=6.0
-
+pytest==9.1.1
