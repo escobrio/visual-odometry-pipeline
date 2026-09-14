@@ -20,8 +20,8 @@ class VisualOdometryPipeline:
         self.cfg = cfg
         self.images_paths, self.last_frame, self.K = load_dataset(self.cfg.dataset_id)
         self.visualizer = None
-        self.global_camera_poses = None
-        self.global_landmarks = None
+        self.global_camera_poses = []
+        self.global_landmarks = []
 
     def _init_visualizer(self, first_image):
         self.visualizer = VOVisualizer(
@@ -176,12 +176,12 @@ class VisualOdometryPipeline:
             "t_y": T_WC_current[1, 3],
             "t_z": T_WC_current[2, 3],
         }
-        fromated_info_string = format_info(
+        formated_info_string = format_info(
             info, header=f"Frame {frame_idx} - New Landmarks Info"
         )
-        logger.info(fromated_info_string)
-
+        logger.info(formated_info_string)
         logger.info(f"shape of all landmarks: {self.global_landmarks.shape}")
+        return formated_info_string
 
     def _estimate_camera_pose(self, landmarks_3d, current_keypoints):
         # Use PnP RANSAC to estimate the new camera pose
@@ -213,14 +213,11 @@ class VisualOdometryPipeline:
         current_T_WC = np.linalg.inv(T_CW)
         return current_T_WC, inlier_mask
 
-    def step(self, S, frame_idx):
-
-        current_image = cv2.imread(self.images_paths[frame_idx], cv2.IMREAD_GRAYSCALE)
-
-        # Track keypoints from image to image_next using KLT (optical flow)
-        prev_keypoints = (
-            S["P"].reshape(-1, 1, 2).astype(np.float32)
+    def _track_keypoints_klt(self, prev_keypoints, landmarks_3d, current_image):
+        prev_keypoints = prev_keypoints.reshape(-1, 1, 2).astype(
+            np.float32
         )  # reshape to (N,1,2) for cv2
+
         current_keypoints, status, _ = cv2.calcOpticalFlowPyrLK(
             prevImg=self.prev_image,
             nextImg=current_image,
@@ -232,19 +229,31 @@ class VisualOdometryPipeline:
         current_keypoints = current_keypoints[status == 1].reshape(
             -1, 2
         )  # reshape back to (N,2) internal convention
-        S["P"] = S["P"][status.flatten().astype(bool)]
-        S["X"] = S["X"][status.flatten().astype(bool)]
+        # Only consider keypoints and landmarks for which an optical flow vector was found
+        is_tracked = status.flatten().astype(bool)
+        prev_keypoints = prev_keypoints[is_tracked]
+        landmarks_3d = landmarks_3d[is_tracked]
+        return prev_keypoints.reshape(-1, 2), landmarks_3d, current_keypoints
 
+    def step(self, S, frame_idx):
+
+        current_image = cv2.imread(self.images_paths[frame_idx], cv2.IMREAD_GRAYSCALE)
+        prev_keypoints = S["P"]
         landmarks_3d = S["X"]
+
+        prev_keypoints, tracked_landmarks_3d, tracked_keypoints = (
+            self._track_keypoints_klt(prev_keypoints, landmarks_3d, current_image)
+        )
+
         current_camera_pose, inlier_mask = self._estimate_camera_pose(
-            landmarks_3d, current_keypoints
+            tracked_landmarks_3d, tracked_keypoints
         )
         self.global_camera_poses.append(current_camera_pose)
 
         # prune lost landmarks and keypoints
-        keypoints_next = current_keypoints[inlier_mask]
-        landmarks_next = landmarks_3d[inlier_mask]
-        P_prev_inliers = current_keypoints[inlier_mask]
+        keypoints_next = tracked_keypoints[inlier_mask]
+        landmarks_next = tracked_landmarks_3d[inlier_mask]
+        P_prev_inliers = prev_keypoints[inlier_mask]
 
         # Update state S with inliers only
         S["P"] = keypoints_next
@@ -264,17 +273,19 @@ class VisualOdometryPipeline:
         # Update image for next iteration
         self.prev_image = current_image
 
-        self._log_info(S, info_new_landmarks, current_camera_pose, frame_idx)
+        formated_info_string = self._log_info(
+            S, info_new_landmarks, current_camera_pose, frame_idx
+        )
 
         if self.cfg.visualize and self.visualizer is not None:
             self.visualizer.step(
                 current_image,
-                current_keypoints,
+                keypoints_next,
                 P_prev_inliers,
                 frame_idx,
                 self.global_landmarks,
                 self.global_camera_poses,
-                fromated_info_string,
+                formated_info_string,
             )
 
         return S
