@@ -135,9 +135,53 @@ class VisualOdometryPipeline:
         self.image = cv2.imread(self.images_paths[frame_idx], cv2.IMREAD_GRAYSCALE)
         n_frames = min(self.cfg.n_frames, self.last_frame)
 
-        return S, frame_idx, n_frames, info
+        return S, frame_idx, n_frames
 
-    def step(self, S, frame_idx, info):
+    def _log_reprojection_errors(self, S, rvec, t_CW, P_next_candidates, inlier_mask):
+        projected_points, _ = cv2.projectPoints(S["X"], rvec, t_CW, self.K, None)
+        projected_points = projected_points.reshape(-1, 2)
+
+        # Calculate reprojection errors
+        reproj_errors = np.linalg.norm(P_next_candidates - projected_points, axis=1)
+        inlier_errors = reproj_errors[inlier_mask]
+        outlier_errors = reproj_errors[~inlier_mask]
+
+        num_points = len(S["X"])
+        logger.info(
+            f"  PnP: {np.sum(inlier_mask)}/{num_points} inliers ({100 * np.sum(inlier_mask) / num_points:.1f}%)"
+        )
+        logger.info(
+            f"  Reprojection errors - All: min={reproj_errors.min():.2f}px, max={reproj_errors.max():.2f}px, "
+            f"mean={reproj_errors.mean():.2f}px, median={np.median(reproj_errors):.2f}px"
+        )
+        if len(inlier_errors) > 0:
+            logger.info(
+                f"  Reprojection errors - Inliers: mean={inlier_errors.mean():.2f}px, median={np.median(inlier_errors):.2f}px, max={inlier_errors.max():.2f}px"
+            )
+        if len(outlier_errors) > 0:
+            logger.info(
+                f"  Reprojection errors - Outliers: mean={outlier_errors.mean():.2f}px, median={np.median(outlier_errors):.2f}px"
+            )
+
+    def _log_info(self, S, info_new_landmarks, T_WC_current, frame_idx):
+        info = {}
+        info["num_keypoints"] = S["P"].shape[0]
+        info["num_landmarks"] = S["X"].shape[0]
+        info["num_candidates"] = S["C"].shape[0]
+        info["new_landmarks"] = info_new_landmarks
+        info["camera_pose"] = {
+            "t_x": T_WC_current[0, 3],
+            "t_y": T_WC_current[1, 3],
+            "t_z": T_WC_current[2, 3],
+        }
+        fromated_info_string = format_info(
+            info, header=f"Frame {frame_idx} - New Landmarks Info"
+        )
+        logger.info(fromated_info_string)
+
+        logger.info(f"shape of all landmarks: {self.global_landmarks.shape}")
+
+    def step(self, S, frame_idx):
         # get images for optical flow tracking
         image = self.image
         image_next = cv2.imread(self.images_paths[frame_idx], cv2.IMREAD_GRAYSCALE)
@@ -179,29 +223,7 @@ class VisualOdometryPipeline:
 
         # Debug: Calculate reprojection errors for all points
         if self.cfg.cfg["pipeline"]["log"]:
-            projected_points, _ = cv2.projectPoints(S["X"], rvec, t_CW, self.K, None)
-            projected_points = projected_points.reshape(-1, 2)
-
-            # Calculate reprojection errors
-            reproj_errors = np.linalg.norm(P_next_candidates - projected_points, axis=1)
-            inlier_errors = reproj_errors[inlier_mask]
-            outlier_errors = reproj_errors[~inlier_mask]
-
-            logger.info(
-                f"  PnP: {np.sum(inlier_mask)}/{num_points} inliers ({100 * np.sum(inlier_mask) / num_points:.1f}%)"
-            )
-            logger.info(
-                f"  Reprojection errors - All: min={reproj_errors.min():.2f}px, max={reproj_errors.max():.2f}px, "
-                f"mean={reproj_errors.mean():.2f}px, median={np.median(reproj_errors):.2f}px"
-            )
-            if len(inlier_errors) > 0:
-                logger.info(
-                    f"  Reprojection errors - Inliers: mean={inlier_errors.mean():.2f}px, median={np.median(inlier_errors):.2f}px, max={inlier_errors.max():.2f}px"
-                )
-            if len(outlier_errors) > 0:
-                logger.info(
-                    f"  Reprojection errors - Outliers: mean={outlier_errors.mean():.2f}px, median={np.median(outlier_errors):.2f}px"
-                )
+            self._log_reprojection_errors(S, rvec, t_CW, P_next_candidates, inlier_mask)
 
         # prune lost landmarks and keypoints
         keypoints_next = P_next_candidates[inlier_mask]
@@ -229,21 +251,7 @@ class VisualOdometryPipeline:
         # Update image for next iteration
         self.image = image_next
 
-        info["num_keypoints"] = S["P"].shape[0]
-        info["num_landmarks"] = S["X"].shape[0]
-        info["num_candidates"] = S["C"].shape[0]
-        info["new_landmarks"] = info_new_landmarks
-        info["camera_pose"] = {
-            "t_x": T_WC_current[0, 3],
-            "t_y": T_WC_current[1, 3],
-            "t_z": T_WC_current[2, 3],
-        }
-        fromated_info_string = format_info(
-            info, header=f"Frame {frame_idx} - New Landmarks Info"
-        )
-        logger.info(fromated_info_string)
-
-        logger.info(f"shape of all landmarks: {self.global_landmarks.shape}")
+        self._log_info(S, info_new_landmarks, T_WC_current, frame_idx)
 
         if self.cfg.visualize and self.visualizer is not None:
             self.visualizer.step(
@@ -259,9 +267,9 @@ class VisualOdometryPipeline:
         return S
 
     def run(self):
-        S, frame_idx, n_frames, info = self.initialize()
+        S, frame_idx, n_frames = self.initialize()
         for frame_id in range(frame_idx + 1, n_frames):
-            S = self.step(S, frame_id, info)
+            S = self.step(S, frame_id)
 
         if self.cfg.visualize and self.visualizer is not None:
             self.visualizer.close()
