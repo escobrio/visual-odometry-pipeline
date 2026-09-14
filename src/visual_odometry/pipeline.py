@@ -23,6 +23,168 @@ class VisualOdometryPipeline:
         self.global_camera_poses = []
         self.global_landmarks = []
 
+    def run(self):
+        S, frame_idx, n_frames = self.initialize()
+        for frame_id in range(frame_idx + 1, n_frames):
+            S = self.step(S, frame_id)
+
+        if self.cfg.visualize and self.visualizer is not None:
+            self.visualizer.close()
+
+    def initialize(self):
+        logger.info(f"Loading dataset {self.cfg.dataset_id}")
+
+        first_image = cv2.imread(self.images_paths[0], cv2.IMREAD_GRAYSCALE)
+        if self.cfg.visualize:
+            self._init_visualizer(first_image)
+
+        # Part I: Bootstrap VO pipeline
+        Rot, Translation, landmarks_i, keypoints_i, frame_idx = bootstrap_VO(
+            self.images_paths, self.cfg, self.K, self.visualizer
+        )
+        initial_camera_pose = np.vstack((np.hstack((Rot, Translation)), [0, 0, 0, 1]))
+
+        (
+            candidate_keypoints_i,
+            candidate_first_observation_i,
+            candidate_camera_poses_i,
+        ) = self._initialize_candidate_keypoints(keypoints_i, landmarks_i, first_image)
+
+        # State dict
+        S = {
+            "P": keypoints_i,
+            "X": landmarks_i,
+            "C": candidate_keypoints_i,
+            "F": candidate_first_observation_i,
+            "T": candidate_camera_poses_i,
+        }
+
+        # Initialize global camera pose and landmarks storage
+        self.global_camera_poses = [initial_camera_pose]
+        self.global_landmarks = S["X"].copy()
+
+        # Initialize info printing
+        info = {
+            "num_keypoints": S["P"].shape[0],
+            "num_landmarks": S["X"].shape[0],
+            "num_candidates": S["C"].shape[0],
+        }
+
+        logger.info(format_info(info, header="Initial State S"))
+
+        # Start with the last used image in bootstrap
+        self.prev_image = cv2.imread(self.images_paths[frame_idx], cv2.IMREAD_GRAYSCALE)
+        n_frames = min(self.cfg.n_frames, self.last_frame)
+
+        return S, frame_idx, n_frames
+
+    def step(self, S, frame_idx):
+
+        current_image = cv2.imread(self.images_paths[frame_idx], cv2.IMREAD_GRAYSCALE)
+        prev_keypoints = S["P"]
+        landmarks_3d = S["X"]
+
+        prev_keypoints, tracked_landmarks_3d, tracked_keypoints = (
+            self._track_keypoints_klt(prev_keypoints, landmarks_3d, current_image)
+        )
+
+        current_camera_pose, inlier_mask = self._estimate_camera_pose(
+            tracked_landmarks_3d, tracked_keypoints
+        )
+        self.global_camera_poses.append(current_camera_pose)
+
+        # prune lost landmarks and keypoints
+        keypoints_next = tracked_keypoints[inlier_mask]
+        landmarks_next = tracked_landmarks_3d[inlier_mask]
+        P_prev_inliers = prev_keypoints[inlier_mask]
+
+        # Update state S with inliers only
+        S["P"] = keypoints_next
+        S["X"] = landmarks_next
+
+        # Triangulate new landmarks and maintain candidates
+        S, new_landmarks, info_new_landmarks = add_new_landmarks(
+            S,
+            self.prev_image,
+            current_image,
+            self.K,
+            self.global_camera_poses,
+            self.cfg.cfg,
+        )
+        self.global_landmarks = np.vstack((self.global_landmarks, new_landmarks))
+
+        # Update image for next iteration
+        self.prev_image = current_image
+
+        formated_info_string = self._log_info(
+            S, info_new_landmarks, current_camera_pose, frame_idx
+        )
+
+        if self.cfg.visualize and self.visualizer is not None:
+            self.visualizer.step(
+                current_image,
+                keypoints_next,
+                P_prev_inliers,
+                frame_idx,
+                self.global_landmarks,
+                self.global_camera_poses,
+                formated_info_string,
+            )
+
+        return S
+
+    def _track_keypoints_klt(self, prev_keypoints, landmarks_3d, current_image):
+        prev_keypoints = prev_keypoints.reshape(-1, 1, 2).astype(
+            np.float32
+        )  # reshape to (N,1,2) for cv2
+
+        current_keypoints, status, _ = cv2.calcOpticalFlowPyrLK(
+            prevImg=self.prev_image,
+            nextImg=current_image,
+            prevPts=prev_keypoints,
+            nextPts=None,
+            **self.cfg.lk_params(),
+        )
+
+        current_keypoints = current_keypoints[status == 1].reshape(
+            -1, 2
+        )  # reshape back to (N,2) internal convention
+        # Only consider keypoints and landmarks for which an optical flow vector was found
+        is_tracked = status.flatten().astype(bool)
+        prev_keypoints = prev_keypoints[is_tracked]
+        landmarks_3d = landmarks_3d[is_tracked]
+        return prev_keypoints.reshape(-1, 2), landmarks_3d, current_keypoints
+
+    def _estimate_camera_pose(self, landmarks_3d, current_keypoints):
+        # Use PnP RANSAC to estimate the new camera pose
+        # solvePnPRansac returns transformation from world to camera (T_CW)
+        _, rvec, t_CW, inliers = cv2.solvePnPRansac(
+            objectPoints=landmarks_3d,
+            imagePoints=current_keypoints,
+            distCoeffs=None,
+            cameraMatrix=self.K,
+        )
+        R_CW, _ = cv2.Rodrigues(rvec)
+
+        # Create boolean mask from inlier indices
+        num_points = len(landmarks_3d)
+        inlier_mask = np.zeros(num_points, dtype=bool)
+        if inliers is not None:
+            inlier_mask[inliers.flatten()] = True
+
+        # Debug: Calculate reprojection errors for all points
+        if self.cfg.cfg["pipeline"]["log"]:
+            self._log_reprojection_errors(
+                landmarks_3d, rvec, t_CW, current_keypoints, inlier_mask
+            )
+
+        # Store the current camera pose globally
+        # Build T_CW (camera from world) from PnP result
+        T_CW = np.vstack((np.hstack((R_CW, t_CW)), [0, 0, 0, 1]))
+        # Convert to T_WC (world from camera) for global pose
+        current_T_WC = np.linalg.inv(T_CW)
+        return current_T_WC, inlier_mask
+
     def _init_visualizer(self, first_image):
         self.visualizer = VOVisualizer(
             first_image,
@@ -90,53 +252,6 @@ class VisualOdometryPipeline:
             candidate_camera_poses_i,
         )
 
-    def initialize(self):
-        logger.info(f"Loading dataset {self.cfg.dataset_id}")
-
-        first_image = cv2.imread(self.images_paths[0], cv2.IMREAD_GRAYSCALE)
-        if self.cfg.visualize:
-            self._init_visualizer(first_image)
-
-        # Part I: Bootstrap VO pipeline
-        Rot, Translation, landmarks_i, keypoints_i, frame_idx = bootstrap_VO(
-            self.images_paths, self.cfg, self.K, self.visualizer
-        )
-        initial_camera_pose = np.vstack((np.hstack((Rot, Translation)), [0, 0, 0, 1]))
-
-        (
-            candidate_keypoints_i,
-            candidate_first_observation_i,
-            candidate_camera_poses_i,
-        ) = self._initialize_candidate_keypoints(keypoints_i, landmarks_i, first_image)
-
-        # State dict
-        S = {
-            "P": keypoints_i,
-            "X": landmarks_i,
-            "C": candidate_keypoints_i,
-            "F": candidate_first_observation_i,
-            "T": candidate_camera_poses_i,
-        }
-
-        # Initialize global camera pose and landmarks storage
-        self.global_camera_poses = [initial_camera_pose]
-        self.global_landmarks = S["X"].copy()
-
-        # Initialize info printing
-        info = {
-            "num_keypoints": S["P"].shape[0],
-            "num_landmarks": S["X"].shape[0],
-            "num_candidates": S["C"].shape[0],
-        }
-
-        logger.info(format_info(info, header="Initial State S"))
-
-        # Start with the last used image in bootstrap
-        self.prev_image = cv2.imread(self.images_paths[frame_idx], cv2.IMREAD_GRAYSCALE)
-        n_frames = min(self.cfg.n_frames, self.last_frame)
-
-        return S, frame_idx, n_frames
-
     def _log_reprojection_errors(
         self, landmarks_3d, rvec, t_CW, P_next_candidates, inlier_mask
     ):
@@ -182,118 +297,3 @@ class VisualOdometryPipeline:
         logger.info(formated_info_string)
         logger.info(f"shape of all landmarks: {self.global_landmarks.shape}")
         return formated_info_string
-
-    def _estimate_camera_pose(self, landmarks_3d, current_keypoints):
-        # Use PnP RANSAC to estimate the new camera pose
-        # solvePnPRansac returns transformation from world to camera (T_CW)
-        _, rvec, t_CW, inliers = cv2.solvePnPRansac(
-            objectPoints=landmarks_3d,
-            imagePoints=current_keypoints,
-            distCoeffs=None,
-            cameraMatrix=self.K,
-        )
-        R_CW, _ = cv2.Rodrigues(rvec)
-
-        # Create boolean mask from inlier indices
-        num_points = len(landmarks_3d)
-        inlier_mask = np.zeros(num_points, dtype=bool)
-        if inliers is not None:
-            inlier_mask[inliers.flatten()] = True
-
-        # Debug: Calculate reprojection errors for all points
-        if self.cfg.cfg["pipeline"]["log"]:
-            self._log_reprojection_errors(
-                landmarks_3d, rvec, t_CW, current_keypoints, inlier_mask
-            )
-
-        # Store the current camera pose globally
-        # Build T_CW (camera from world) from PnP result
-        T_CW = np.vstack((np.hstack((R_CW, t_CW)), [0, 0, 0, 1]))
-        # Convert to T_WC (world from camera) for global pose
-        current_T_WC = np.linalg.inv(T_CW)
-        return current_T_WC, inlier_mask
-
-    def _track_keypoints_klt(self, prev_keypoints, landmarks_3d, current_image):
-        prev_keypoints = prev_keypoints.reshape(-1, 1, 2).astype(
-            np.float32
-        )  # reshape to (N,1,2) for cv2
-
-        current_keypoints, status, _ = cv2.calcOpticalFlowPyrLK(
-            prevImg=self.prev_image,
-            nextImg=current_image,
-            prevPts=prev_keypoints,
-            nextPts=None,
-            **self.cfg.lk_params(),
-        )
-
-        current_keypoints = current_keypoints[status == 1].reshape(
-            -1, 2
-        )  # reshape back to (N,2) internal convention
-        # Only consider keypoints and landmarks for which an optical flow vector was found
-        is_tracked = status.flatten().astype(bool)
-        prev_keypoints = prev_keypoints[is_tracked]
-        landmarks_3d = landmarks_3d[is_tracked]
-        return prev_keypoints.reshape(-1, 2), landmarks_3d, current_keypoints
-
-    def step(self, S, frame_idx):
-
-        current_image = cv2.imread(self.images_paths[frame_idx], cv2.IMREAD_GRAYSCALE)
-        prev_keypoints = S["P"]
-        landmarks_3d = S["X"]
-
-        prev_keypoints, tracked_landmarks_3d, tracked_keypoints = (
-            self._track_keypoints_klt(prev_keypoints, landmarks_3d, current_image)
-        )
-
-        current_camera_pose, inlier_mask = self._estimate_camera_pose(
-            tracked_landmarks_3d, tracked_keypoints
-        )
-        self.global_camera_poses.append(current_camera_pose)
-
-        # prune lost landmarks and keypoints
-        keypoints_next = tracked_keypoints[inlier_mask]
-        landmarks_next = tracked_landmarks_3d[inlier_mask]
-        P_prev_inliers = prev_keypoints[inlier_mask]
-
-        # Update state S with inliers only
-        S["P"] = keypoints_next
-        S["X"] = landmarks_next
-
-        # Triangulate new landmarks and maintain candidates
-        S, new_landmarks, info_new_landmarks = add_new_landmarks(
-            S,
-            self.prev_image,
-            current_image,
-            self.K,
-            self.global_camera_poses,
-            self.cfg.cfg,
-        )
-        self.global_landmarks = np.vstack((self.global_landmarks, new_landmarks))
-
-        # Update image for next iteration
-        self.prev_image = current_image
-
-        formated_info_string = self._log_info(
-            S, info_new_landmarks, current_camera_pose, frame_idx
-        )
-
-        if self.cfg.visualize and self.visualizer is not None:
-            self.visualizer.step(
-                current_image,
-                keypoints_next,
-                P_prev_inliers,
-                frame_idx,
-                self.global_landmarks,
-                self.global_camera_poses,
-                formated_info_string,
-            )
-
-        return S
-
-    def run(self):
-        S, frame_idx, n_frames = self.initialize()
-        for frame_id in range(frame_idx + 1, n_frames):
-            S = self.step(S, frame_id)
-
-        if self.cfg.visualize and self.visualizer is not None:
-            self.visualizer.close()
