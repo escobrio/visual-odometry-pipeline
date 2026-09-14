@@ -43,18 +43,46 @@ After that download and extract the zip data and copy it into the provided data 
 .
 ```
 
-## Running Tests
+## Repository Structure
+
+```text
+src/visual_odometry/
+├── __main__.py        # Package execution entry point (python -m visual_odometry)
+├── main.py            # CLI entry point and argument parsing
+├── pipeline.py        # Core Visual Odometry pipeline coordinator
+├── bootstrap.py       # Initial stereo baseline & 3D landmark bootstrap
+├── triangulation.py   # Multi-view 3D landmark triangulation & cheirality checks
+├── binning.py         # Spatial grid feature distribution & quota redistribution
+├── new_keypoints.py   # Candidate keypoint detection and tracking
+├── data_loader.py     # Dataset loader and VOConfig parser
+├── visualizer.py      # Real-time trajectory & optical flow visualization
+└── print_.py          # Formatting helpers for logging
 ```
+
+## Running Tests
+
+Run the automated regression test suite:
+```bash
+pytest
+```
+Or with live console output and verbosity:
+```bash
 pytest -s -v
 ```
 
 ## Run the Visual Odometry Pipeline
-After activating the conda / mamba environment:
+
+After activating the conda / mamba environment, you can run the pipeline using the package runner:
 ```bash
-python src/main.py --dataset 0 # 0: KTTI, 1: Malaga, 2: Parking, 3: own_datasets
+python3 -m visual_odometry --dataset Parking
 ```
-or you can set the dataset argument in the debug confiuration in .vscode/launch.json and run with Vscode's debugger.
+*(Options for `--dataset`: `KITTI`, `Malaga`, `Parking`, `own_datasets`)*
 
+Or run directly via the installed CLI script:
+```bash
+vo --dataset Parking
+```
 
-The recordings are startet outomatically. 
-    We performed the VO pipeline and the recordings on a laptop with an Intel i7-8550U CPU wich has a maximum frequency of 4.0 GHz, while durring the pocessing of the VO pipeline it was running at 2.6 GHz with 16 threads. The laptop also has 16 GB of RAM.
+The recordings are started automatically. 
+We performed the VO pipeline and the recordings on a laptop with an Intel i7-8550U CPU which has a maximum frequency of 4.0 GHz, while during the processing of the VO pipeline it was running at 2.6 GHz with 16 threads. The laptop also has 16 GB of RAM.
+
