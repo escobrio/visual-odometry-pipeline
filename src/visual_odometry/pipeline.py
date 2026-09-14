@@ -1,7 +1,6 @@
 import logging
 
 import cv2
-import matplotlib.pyplot as plt
 import numpy as np
 
 from visual_odometry.bootstrap import bootstrap_VO
@@ -138,8 +137,10 @@ class VisualOdometryPipeline:
 
         return S, frame_idx, n_frames
 
-    def _log_reprojection_errors(self, S, rvec, t_CW, P_next_candidates, inlier_mask):
-        projected_points, _ = cv2.projectPoints(S["X"], rvec, t_CW, self.K, None)
+    def _log_reprojection_errors(
+        self, landmarks_3d, rvec, t_CW, P_next_candidates, inlier_mask
+    ):
+        projected_points, _ = cv2.projectPoints(landmarks_3d, rvec, t_CW, self.K, None)
         projected_points = projected_points.reshape(-1, 2)
 
         # Calculate reprojection errors
@@ -147,7 +148,7 @@ class VisualOdometryPipeline:
         inlier_errors = reproj_errors[inlier_mask]
         outlier_errors = reproj_errors[~inlier_mask]
 
-        num_points = len(S["X"])
+        num_points = len(landmarks_3d)
         logger.info(
             f"  PnP: {np.sum(inlier_mask)}/{num_points} inliers ({100 * np.sum(inlier_mask) / num_points:.1f}%)"
         )
@@ -182,6 +183,36 @@ class VisualOdometryPipeline:
 
         logger.info(f"shape of all landmarks: {self.global_landmarks.shape}")
 
+    def _estimate_camera_pose(self, landmarks_3d, current_keypoints):
+        # Use PnP RANSAC to estimate the new camera pose
+        # solvePnPRansac returns transformation from world to camera (T_CW)
+        _, rvec, t_CW, inliers = cv2.solvePnPRansac(
+            objectPoints=landmarks_3d,
+            imagePoints=current_keypoints,
+            distCoeffs=None,
+            cameraMatrix=self.K,
+        )
+        R_CW, _ = cv2.Rodrigues(rvec)
+
+        # Create boolean mask from inlier indices
+        num_points = len(landmarks_3d)
+        inlier_mask = np.zeros(num_points, dtype=bool)
+        if inliers is not None:
+            inlier_mask[inliers.flatten()] = True
+
+        # Debug: Calculate reprojection errors for all points
+        if self.cfg.cfg["pipeline"]["log"]:
+            self._log_reprojection_errors(
+                landmarks_3d, rvec, t_CW, current_keypoints, inlier_mask
+            )
+
+        # Store the current camera pose globally
+        # Build T_CW (camera from world) from PnP result
+        T_CW = np.vstack((np.hstack((R_CW, t_CW)), [0, 0, 0, 1]))
+        # Convert to T_WC (world from camera) for global pose
+        current_T_WC = np.linalg.inv(T_CW)
+        return current_T_WC, inlier_mask
+
     def step(self, S, frame_idx):
 
         current_image = cv2.imread(self.images_paths[frame_idx], cv2.IMREAD_GRAYSCALE)
@@ -190,7 +221,7 @@ class VisualOdometryPipeline:
         prev_keypoints = (
             S["P"].reshape(-1, 1, 2).astype(np.float32)
         )  # reshape to (N,1,2) for cv2
-        current_keypoints, status, error = cv2.calcOpticalFlowPyrLK(
+        current_keypoints, status, _ = cv2.calcOpticalFlowPyrLK(
             prevImg=self.prev_image,
             nextImg=current_image,
             prevPts=prev_keypoints,
@@ -204,43 +235,20 @@ class VisualOdometryPipeline:
         S["P"] = S["P"][status.flatten().astype(bool)]
         S["X"] = S["X"][status.flatten().astype(bool)]
 
-        # Use PnP RANSAC to estimate the new camera pose
-        # TODO not sure if we are alowed to use cv2.solvePnPRansac function, I think we can only use cv2 fundamental and essential?
-        # solvePnPRansac returns transformation from world to camera (T_CW)
-        _, rvec, t_CW, inliers = cv2.solvePnPRansac(
-            objectPoints=S["X"],
-            imagePoints=current_keypoints,
-            distCoeffs=None,
-            cameraMatrix=self.K,
+        landmarks_3d = S["X"]
+        current_camera_pose, inlier_mask = self._estimate_camera_pose(
+            landmarks_3d, current_keypoints
         )
-        R_CW, _ = cv2.Rodrigues(rvec)
-
-        # Create boolean mask from inlier indices
-        num_points = len(S["X"])
-        inlier_mask = np.zeros(num_points, dtype=bool)
-        if inliers is not None:
-            inlier_mask[inliers.flatten()] = True
-
-        # Debug: Calculate reprojection errors for all points
-        if self.cfg.cfg["pipeline"]["log"]:
-            self._log_reprojection_errors(S, rvec, t_CW, current_keypoints, inlier_mask)
+        self.global_camera_poses.append(current_camera_pose)
 
         # prune lost landmarks and keypoints
         keypoints_next = current_keypoints[inlier_mask]
-        landmarks_next = S["X"][inlier_mask]
-        P_prev_inliers = S["P"][inlier_mask]
+        landmarks_next = landmarks_3d[inlier_mask]
+        P_prev_inliers = current_keypoints[inlier_mask]
 
         # Update state S with inliers only
         S["P"] = keypoints_next
         S["X"] = landmarks_next
-
-        # Store the current camera pose globally
-        # Build T_CW (camera from world) from PnP result
-        T_CW = np.vstack((np.hstack((R_CW, t_CW)), [0, 0, 0, 1]))
-        # Convert to T_WC (world from camera) for global pose
-        current_T_WC = np.linalg.inv(T_CW)
-        current_camera_pose = current_T_WC
-        self.global_camera_poses.append(current_camera_pose)
 
         # Triangulate new landmarks and maintain candidates
         S, new_landmarks, info_new_landmarks = add_new_landmarks(
@@ -256,7 +264,7 @@ class VisualOdometryPipeline:
         # Update image for next iteration
         self.prev_image = current_image
 
-        self._log_info(S, info_new_landmarks, current_T_WC, frame_idx)
+        self._log_info(S, info_new_landmarks, current_camera_pose, frame_idx)
 
         if self.cfg.visualize and self.visualizer is not None:
             self.visualizer.step(
