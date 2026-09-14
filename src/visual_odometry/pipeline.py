@@ -132,7 +132,8 @@ class VisualOdometryPipeline:
 
         logger.info(format_info(info, header="Initial State S"))
 
-        self.image = cv2.imread(self.images_paths[frame_idx], cv2.IMREAD_GRAYSCALE)
+        # Start with the last used image in bootstrap
+        self.prev_image = cv2.imread(self.images_paths[frame_idx], cv2.IMREAD_GRAYSCALE)
         n_frames = min(self.cfg.n_frames, self.last_frame)
 
         return S, frame_idx, n_frames
@@ -182,23 +183,22 @@ class VisualOdometryPipeline:
         logger.info(f"shape of all landmarks: {self.global_landmarks.shape}")
 
     def step(self, S, frame_idx):
-        # get images for optical flow tracking
-        image = self.image
-        image_next = cv2.imread(self.images_paths[frame_idx], cv2.IMREAD_GRAYSCALE)
+
+        current_image = cv2.imread(self.images_paths[frame_idx], cv2.IMREAD_GRAYSCALE)
 
         # Track keypoints from image to image_next using KLT (optical flow)
-        prev_points = (
+        prev_keypoints = (
             S["P"].reshape(-1, 1, 2).astype(np.float32)
         )  # reshape to (N,1,2) for cv2
-        P_next_candidates, status, error = cv2.calcOpticalFlowPyrLK(
-            prevImg=image,
-            nextImg=image_next,
-            prevPts=prev_points,
+        current_keypoints, status, error = cv2.calcOpticalFlowPyrLK(
+            prevImg=self.prev_image,
+            nextImg=current_image,
+            prevPts=prev_keypoints,
             nextPts=None,
             **self.cfg.lk_params(),
         )
 
-        P_next_candidates = P_next_candidates[status == 1].reshape(
+        current_keypoints = current_keypoints[status == 1].reshape(
             -1, 2
         )  # reshape back to (N,2) internal convention
         S["P"] = S["P"][status.flatten().astype(bool)]
@@ -207,9 +207,9 @@ class VisualOdometryPipeline:
         # Use PnP RANSAC to estimate the new camera pose
         # TODO not sure if we are alowed to use cv2.solvePnPRansac function, I think we can only use cv2 fundamental and essential?
         # solvePnPRansac returns transformation from world to camera (T_CW)
-        retval, rvec, t_CW, inliers = cv2.solvePnPRansac(
+        _, rvec, t_CW, inliers = cv2.solvePnPRansac(
             objectPoints=S["X"],
-            imagePoints=P_next_candidates,
+            imagePoints=current_keypoints,
             distCoeffs=None,
             cameraMatrix=self.K,
         )
@@ -223,10 +223,10 @@ class VisualOdometryPipeline:
 
         # Debug: Calculate reprojection errors for all points
         if self.cfg.cfg["pipeline"]["log"]:
-            self._log_reprojection_errors(S, rvec, t_CW, P_next_candidates, inlier_mask)
+            self._log_reprojection_errors(S, rvec, t_CW, current_keypoints, inlier_mask)
 
         # prune lost landmarks and keypoints
-        keypoints_next = P_next_candidates[inlier_mask]
+        keypoints_next = current_keypoints[inlier_mask]
         landmarks_next = S["X"][inlier_mask]
         P_prev_inliers = S["P"][inlier_mask]
 
@@ -238,25 +238,30 @@ class VisualOdometryPipeline:
         # Build T_CW (camera from world) from PnP result
         T_CW = np.vstack((np.hstack((R_CW, t_CW)), [0, 0, 0, 1]))
         # Convert to T_WC (world from camera) for global pose
-        T_WC_current = np.linalg.inv(T_CW)
-        current_camera_pose = T_WC_current
+        current_T_WC = np.linalg.inv(T_CW)
+        current_camera_pose = current_T_WC
         self.global_camera_poses.append(current_camera_pose)
 
         # Triangulate new landmarks and maintain candidates
         S, new_landmarks, info_new_landmarks = add_new_landmarks(
-            S, image, image_next, self.K, self.global_camera_poses, self.cfg.cfg
+            S,
+            self.prev_image,
+            current_image,
+            self.K,
+            self.global_camera_poses,
+            self.cfg.cfg,
         )
         self.global_landmarks = np.vstack((self.global_landmarks, new_landmarks))
 
         # Update image for next iteration
-        self.image = image_next
+        self.prev_image = current_image
 
-        self._log_info(S, info_new_landmarks, T_WC_current, frame_idx)
+        self._log_info(S, info_new_landmarks, current_T_WC, frame_idx)
 
         if self.cfg.visualize and self.visualizer is not None:
             self.visualizer.step(
-                image_next,
-                keypoints_next,
+                current_image,
+                current_keypoints,
                 P_prev_inliers,
                 frame_idx,
                 self.global_landmarks,
