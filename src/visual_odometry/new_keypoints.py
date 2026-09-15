@@ -181,22 +181,12 @@ def add_new_landmarks(
     cfg: Optional[Dict[str, Any]] = None,
 ):
 
+    log_info = cfg["pipeline"].get("log", False)
     lk_params = _extract_lk_params(cfg)
 
     state, status_cand, mask, previous_candidates = _track_candidate_keypoints_klt(
         image, image_next, state, lk_params
     )
-
-    bin = (cfg or {}).get("bin", {})
-    use_binning = bin.get("use_binning", True)
-    if use_binning:
-        num_bins_horizontal = bin.get("num_bins_horizontal", 3)
-        num_bins_vertical = bin.get("num_bins_vertical", 2)
-        weight_keypoints = bin.get("weight_keypoints", 0.7)
-        weight_candidates = bin.get("weight_candidates", 0.3)
-
-    pipeline = cfg["pipeline"]
-    log_info = pipeline.get("log", False)
 
     # -- Decide based on angle change, which candidates to convert to keypoints and landmarks --
     # Parameters
