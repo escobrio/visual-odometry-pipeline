@@ -180,41 +180,12 @@ def add_new_landmarks(
     global_camera_poses,
     cfg: Optional[Dict[str, Any]] = None,
 ):
-    """Triangulate and add new landmarks, and updated candidates
-    Input:
-        S: Current state containing images, keypoints, and landmarks
-        image: Current image frame
-        image_next: Next image frame
-        K: Camera intrinsic matrix
-        global_camera_poses: List of global camera poses
-    Output:
-        updated_state: State with new keypoints and candidates added
-        new_landmarks: Newly triangulated landmarks
-        info: Dictionary with information about the operation
-    """
-    # TODO: Investigate further on the dynamics regarding new keypoints and candidates
-    # TODO could be cleaned up more
 
-    # Extract parameters
-    if cfg is not None:
-        lk_cfg = cfg["vo"]["lk"]
-        crit_type = lk_cfg["criteria"]["type"]
-        term = 0
-        if "EPS" in crit_type:
-            term |= cv2.TERM_CRITERIA_EPS
-        if "COUNT" in crit_type:
-            term |= cv2.TERM_CRITERIA_COUNT
-        lk_params = dict(
-            winSize=tuple(lk_cfg["winSize"]),
-            maxLevel=lk_cfg["maxLevel"],
-            criteria=(
-                term,
-                lk_cfg["criteria"]["maxCount"],
-                lk_cfg["criteria"]["epsilon"],
-            ),
-        )
-    else:
-        lk_params = {}
+    lk_params = _extract_lk_params(cfg)
+
+    state, status_cand, mask, previous_candidates = _track_candidate_keypoints_klt(
+        image, image_next, state, lk_params
+    )
 
     bin = (cfg or {}).get("bin", {})
     use_binning = bin.get("use_binning", True)
@@ -226,10 +197,6 @@ def add_new_landmarks(
 
     pipeline = cfg["pipeline"]
     log_info = pipeline.get("log", False)
-
-    state, status_cand, mask, previous_candidates = _track_candidate_keypoints_klt(
-        image, image_next, state, lk_params
-    )
 
     # -- Decide based on angle change, which candidates to convert to keypoints and landmarks --
     # Parameters
@@ -512,6 +479,29 @@ def add_new_landmarks(
             info["Candidate dynamics"] = candidate_info
 
     return state, new_landmarks, info
+
+
+def _extract_lk_params(cfg):
+    if cfg is not None:
+        lk_cfg = cfg["vo"]["lk"]
+        crit_type = lk_cfg["criteria"]["type"]
+        term = 0
+        if "EPS" in crit_type:
+            term |= cv2.TERM_CRITERIA_EPS
+        if "COUNT" in crit_type:
+            term |= cv2.TERM_CRITERIA_COUNT
+        lk_params = dict(
+            winSize=tuple(lk_cfg["winSize"]),
+            maxLevel=lk_cfg["maxLevel"],
+            criteria=(
+                term,
+                lk_cfg["criteria"]["maxCount"],
+                lk_cfg["criteria"]["epsilon"],
+            ),
+        )
+    else:
+        lk_params = {}
+    return lk_params
 
 
 def _track_candidate_keypoints_klt(image, image_next, state, lk_params):
