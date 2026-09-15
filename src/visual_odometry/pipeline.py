@@ -108,7 +108,7 @@ class VisualOdometryPipeline:
             self.prev_image,
             current_image,
             self.K,
-            self.global_camera_poses,
+            current_camera_pose,
             self.cfg.cfg,
         )
         self.global_landmarks = np.vstack((self.global_landmarks, new_landmarks))

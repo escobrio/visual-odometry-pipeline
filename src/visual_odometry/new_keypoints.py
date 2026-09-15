@@ -177,7 +177,7 @@ def add_new_landmarks(
     image,
     image_next,
     K,
-    global_camera_poses,
+    current_camera_pose,
     cfg: Optional[Dict[str, Any]] = None,
 ):
 
@@ -191,7 +191,6 @@ def add_new_landmarks(
     # -- Decide based on angle change, which candidates to convert to keypoints and landmarks --
     # Parameters
 
-    current_camera_pose = global_camera_poses[-1]
     K_inv = np.linalg.inv(K)
 
     # - Compute bearing angle changes for all candidates --> First selection constraint -
