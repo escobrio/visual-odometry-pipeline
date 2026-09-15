@@ -10,3 +10,13 @@ class VOState:
     candidate_points: np.ndarray  # (M, 2) tracked 2D candidate keypoint
     first_points: np.ndarray  # (M, 2) 2D keypoints when candidate was first seen
     first_poses: np.ndarray  # (M, 4, 4) camera poses when candidate was first seen
+
+    def __post_init__(self):
+        if len(self.keypoints) != len(self.landmarks):
+            raise ValueError("keypoints and landmarks must have matching lengths")
+        if not (
+            len(self.candidate_points)
+            == len(self.first_points)
+            == len(self.first_poses)
+        ):
+            raise ValueError("candidate arrays must have matching lengths")

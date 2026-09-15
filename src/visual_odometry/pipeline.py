@@ -2,7 +2,6 @@ import logging
 
 import cv2
 import numpy as np
-from visual_odometry.state import VOState
 
 from visual_odometry.bootstrap import bootstrap_VO
 from visual_odometry.data_loader import VOConfig, load_dataset
@@ -11,6 +10,7 @@ from visual_odometry.new_keypoints import (
     detect_new_candidate_keypoints,
 )
 from visual_odometry.print_ import format_info
+from visual_odometry.state import VOState
 from visual_odometry.visualizer import VOVisualizer
 
 logger = logging.getLogger(__name__)
