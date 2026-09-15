@@ -190,17 +190,6 @@ def add_new_landmarks(
 
     # -- Decide based on angle change, which candidates to convert to keypoints and landmarks --
     # Parameters
-    cand = (cfg or {}).get("candidates", {})
-    angle_threshold = cand.get("angle_threshold_deg", 10.0)
-    max_keypoints = cand.get("max_keypoints", 1000)
-    min_candidates_needed = cand.get("min_candidates_needed", 20)
-    max_new_candidates = cand.get("max_new_candidates", 50)
-    need_mult = cand.get("need_multiplier", 1.5)
-
-    bin = (cfg or {}).get("bin", {})
-    use_binning = bin.get("use_binning", True)
-    num_bins_horizontal = bin.get("num_bins_horizontal", 3)
-    num_bins_vertical = bin.get("num_bins_vertical", 2)
 
     current_camera_pose = global_camera_poses[-1]
     K_inv = np.linalg.inv(K)
@@ -240,6 +229,10 @@ def add_new_landmarks(
 
     bearing_angle = np.arccos(np.clip(cos_angles, -1.0, 1.0)) * (180.0 / np.pi)
 
+    cand = (cfg or {}).get("candidates", {})
+    angle_threshold = cand.get("angle_threshold_deg", 10.0)
+    max_keypoints = cand.get("max_keypoints", 1000)
+
     candidate_passed_bearing_angle_mask = bearing_angle > angle_threshold
 
     # Debug: Log bearing angle statistics
@@ -267,6 +260,11 @@ def add_new_landmarks(
         num_candidates_available, max_keypoints - num_keypoints_current
     )
     num_keypoints_to_add = max(num_keypoints_to_add, 0)
+
+    bin = (cfg or {}).get("bin", {})
+    use_binning = bin.get("use_binning", True)
+    num_bins_horizontal = bin.get("num_bins_horizontal", 3)
+    num_bins_vertical = bin.get("num_bins_vertical", 2)
 
     if not use_binning:
         # Add candidates based on bearing angle only
@@ -368,11 +366,15 @@ def add_new_landmarks(
     else:
         num_lost_candidates = np.count_nonzero(~status_cand.flatten())
 
+    cand = (cfg or {}).get("candidates", {})
+    need_mult = cand.get("need_multiplier", 1.5)
     # TODO: this might be instable, maybe based on a global #keypoints goal or some sort of different quality metric
     num_new_candidates_needed = int(
         (num_converted_candidates + num_lost_candidates) * need_mult
     )
 
+    min_candidates_needed = cand.get("min_candidates_needed", 20)
+    max_new_candidates = cand.get("max_new_candidates", 50)
     num_new_candidates_needed = max(num_new_candidates_needed, min_candidates_needed)
     num_new_candidates_needed = min(num_new_candidates_needed, max_new_candidates)
 
