@@ -191,42 +191,7 @@ def add_new_landmarks(
     # -- Decide based on angle change, which candidates to convert to keypoints and landmarks --
     # Parameters
 
-    K_inv = np.linalg.inv(K)
-
-    # - Compute bearing angle changes for all candidates --> First selection constraint -
-    # Bearing vector old poses
-    old_T = (
-        state.first_poses
-    )  # TODO flatten to (num_keypoints, 12) for now (num_keypoints, 4, 4)
-    old_keypoints_ = state.first_points  # This is in pixels (num_keypoints, 2)
-    old_keypoints = (
-        K_inv @ np.vstack((old_keypoints_.T, np.ones((1, old_keypoints_.shape[0]))))
-    ).T  # (num_keypoints, 3)
-    # old_bearing_vectors = (old_T[:, :3, :3] @ old_keypoints.T).T  # (num_keypoints, 3)
-    old_bearing_vectors = np.einsum(
-        "ijk,ik->ij", old_T[:, :3, :3], old_keypoints
-    )  # (num_keypoints, 3)
-
-    # Bearing vector current pose
-    current_T = (
-        current_camera_pose  # TODO flatten to (num_keypoints, 12) for now (4, 4)
-    )
-    current_keypoints_ = state.candidate_points
-    current_keypoints = (
-        K_inv
-        @ np.vstack((current_keypoints_.T, np.ones((1, current_keypoints_.shape[0]))))
-    ).T  # (num_keypoints, 3)
-    current_bearing_vectors = (
-        current_T[:3, :3] @ current_keypoints.T
-    ).T  # (num_keypoints, 3)
-
-    # Bearing angle computation
-    dots = np.einsum("ij,ij->i", old_bearing_vectors, current_bearing_vectors)
-    old_norms = np.linalg.norm(old_bearing_vectors, axis=1)
-    cur_norms = np.linalg.norm(current_bearing_vectors, axis=1)
-    cos_angles = dots / (old_norms * cur_norms + 1e-12)
-
-    bearing_angle = np.arccos(np.clip(cos_angles, -1.0, 1.0)) * (180.0 / np.pi)
+    bearing_angle = _calculate_bearing_angle(K, state, current_camera_pose)
 
     cand = (cfg or {}).get("candidates", {})
     angle_threshold = cand.get("angle_threshold_deg", 10.0)
@@ -520,6 +485,47 @@ def _track_candidate_keypoints_klt(image, image_next, state, lk_params):
         state.first_points = state.first_points[mask]
         state.first_poses = state.first_poses[mask]
     return state, status_cand, mask, previous_candidates
+
+
+def _calculate_bearing_angle(K, state, current_camera_pose):
+
+    K_inv = np.linalg.inv(K)
+
+    # - Compute bearing angle changes for all candidates --> First selection constraint -
+    # Bearing vector old poses
+    old_T = (
+        state.first_poses
+    )  # TODO flatten to (num_keypoints, 12) for now (num_keypoints, 4, 4)
+    old_keypoints_ = state.first_points  # This is in pixels (num_keypoints, 2)
+    old_keypoints = (
+        K_inv @ np.vstack((old_keypoints_.T, np.ones((1, old_keypoints_.shape[0]))))
+    ).T  # (num_keypoints, 3)
+    # old_bearing_vectors = (old_T[:, :3, :3] @ old_keypoints.T).T  # (num_keypoints, 3)
+    old_bearing_vectors = np.einsum(
+        "ijk,ik->ij", old_T[:, :3, :3], old_keypoints
+    )  # (num_keypoints, 3)
+
+    # Bearing vector current pose
+    current_T = (
+        current_camera_pose  # TODO flatten to (num_keypoints, 12) for now (4, 4)
+    )
+    current_keypoints_ = state.candidate_points
+    current_keypoints = (
+        K_inv
+        @ np.vstack((current_keypoints_.T, np.ones((1, current_keypoints_.shape[0]))))
+    ).T  # (num_keypoints, 3)
+    current_bearing_vectors = (
+        current_T[:3, :3] @ current_keypoints.T
+    ).T  # (num_keypoints, 3)
+
+    # Bearing angle computation
+    dots = np.einsum("ij,ij->i", old_bearing_vectors, current_bearing_vectors)
+    old_norms = np.linalg.norm(old_bearing_vectors, axis=1)
+    cur_norms = np.linalg.norm(current_bearing_vectors, axis=1)
+    cos_angles = dots / (old_norms * cur_norms + 1e-12)
+
+    bearing_angle = np.arccos(np.clip(cos_angles, -1.0, 1.0)) * (180.0 / np.pi)
+    return bearing_angle
 
 
 def _filter_redundant_candidates(
