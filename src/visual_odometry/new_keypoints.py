@@ -173,7 +173,12 @@ def detect_new_candidate_keypoints(
 
 
 def add_new_landmarks(
-    S, image, image_next, K, global_camera_poses, cfg: Optional[Dict[str, Any]] = None
+    state,
+    image,
+    image_next,
+    K,
+    global_camera_poses,
+    cfg: Optional[Dict[str, Any]] = None,
 ):
     """Triangulate and add new landmarks, and updated candidates
     Input:
@@ -224,7 +229,7 @@ def add_new_landmarks(
 
     # --- Take care of candidates to keypoint conversion ---
     # Track candidate keypoints between frames using KLT
-    prev_cand = S["C"].reshape(-1, 1, 2).astype(np.float32)
+    prev_cand = state.candidate_points.reshape(-1, 1, 2).astype(np.float32)
     candidates_next, status_cand, error_cand = cv2.calcOpticalFlowPyrLK(
         prevImg=image,
         nextImg=image_next,
@@ -240,11 +245,11 @@ def add_new_landmarks(
         mask = status_cand.flatten().astype(bool)
 
         candidates_next = candidates_next[mask].reshape(-1, 2)  # [N, 2]
-        previous_candidates = S["C"]
+        previous_candidates = state.candidate_points
 
-        S["C"] = candidates_next
-        S["F"] = S["F"][mask]
-        S["T"] = S["T"][mask]
+        state.candidate_points = candidates_next
+        state.first_points = state.first_points[mask]
+        state.first_poses = state.first_poses[mask]
 
     # -- Decide based on angle change, which candidates to convert to keypoints and landmarks --
     # Parameters
@@ -265,8 +270,10 @@ def add_new_landmarks(
 
     # - Compute bearing angle changes for all candidates --> First selection constraint -
     # Bearing vector old poses
-    old_T = S["T"]  # TODO flatten to (num_keypoints, 12) for now (num_keypoints, 4, 4)
-    old_keypoints_ = S["F"]  # This is in pixels (num_keypoints, 2)
+    old_T = (
+        state.first_poses
+    )  # TODO flatten to (num_keypoints, 12) for now (num_keypoints, 4, 4)
+    old_keypoints_ = state.first_points  # This is in pixels (num_keypoints, 2)
     old_keypoints = (
         K_inv @ np.vstack((old_keypoints_.T, np.ones((1, old_keypoints_.shape[0]))))
     ).T  # (num_keypoints, 3)
@@ -279,7 +286,7 @@ def add_new_landmarks(
     current_T = (
         current_camera_pose  # TODO flatten to (num_keypoints, 12) for now (4, 4)
     )
-    current_keypoints_ = S["C"]
+    current_keypoints_ = state.candidate_points
     current_keypoints = (
         K_inv
         @ np.vstack((current_keypoints_.T, np.ones((1, current_keypoints_.shape[0]))))
@@ -299,7 +306,7 @@ def add_new_landmarks(
     candidate_passed_bearing_angle_mask = bearing_angle > angle_threshold
 
     # Debug: Log bearing angle statistics
-    if log_info and S["C"].shape[0] > 0:
+    if log_info and state.candidate_points.shape[0] > 0:
         logger.info(
             f"  Bearing angles: min={bearing_angle.min():.2f}°, max={bearing_angle.max():.2f}°, "
             f"mean={bearing_angle.mean():.2f}°, median={np.median(bearing_angle):.2f}°"
@@ -318,7 +325,7 @@ def add_new_landmarks(
     num_candidates_available = candidates_to_add.shape[0]
 
     # Limit the number of total keypoints tracked
-    num_keypoints_current = S["P"].shape[0]
+    num_keypoints_current = state.keypoints.shape[0]
     num_keypoints_to_add = min(
         num_candidates_available, max_keypoints - num_keypoints_current
     )
@@ -326,7 +333,9 @@ def add_new_landmarks(
 
     if not use_binning:
         # Add candidates based on bearing angle only
-        candidates_to_add_mask = np.zeros((S["C"].shape[0],), dtype=bool)
+        candidates_to_add_mask = np.zeros(
+            (state.candidate_points.shape[0],), dtype=bool
+        )
         candidates_to_add_mask[
             np.where(candidate_passed_bearing_angle_mask)[0][
                 ordered_indices[:num_keypoints_to_add]
@@ -338,7 +347,7 @@ def add_new_landmarks(
         img_h, img_w = image.shape[:2]
 
         # Build bins for current keypoints
-        existing_keypoints = S["P"]
+        existing_keypoints = state.keypoints
         bin_count = _weighted_bin_counts(
             existing_keypoints,
             None,
@@ -355,7 +364,7 @@ def add_new_landmarks(
         quota_per_bin = _allocate_quota(num_keypoints_to_add, weight_bins)
 
         # Build map from bin to candidates to add
-        candidates_to_add_points = S["C"][
+        candidates_to_add_points = state.candidate_points[
             np.where(candidate_passed_bearing_angle_mask)[0][ordered_indices]
         ]
         map_candidates_to_bin = _bin_identifier(
@@ -375,18 +384,20 @@ def add_new_landmarks(
         )
 
         # Build final mask
-        candidates_to_add_mask = np.zeros((S["C"].shape[0],), dtype=bool)
+        candidates_to_add_mask = np.zeros(
+            (state.candidate_points.shape[0],), dtype=bool
+        )
         selected_global_indices = np.where(candidate_passed_bearing_angle_mask)[0][
             ordered_indices[selected_candidates_idx]
         ]
         candidates_to_add_mask[selected_global_indices] = True
 
     # Add selected candidates to keypoints and landmarks
-    new_keypoints = S["C"][candidates_to_add_mask]
+    new_keypoints = state.candidate_points[candidates_to_add_mask]
     new_landmarks, valid_mask = triangulate_new_landmarks(
-        keypoints_prev=S["F"][candidates_to_add_mask],
-        T_prev=S["T"][candidates_to_add_mask],
-        keypoints_curr=S["C"][candidates_to_add_mask],
+        keypoints_prev=state.first_points[candidates_to_add_mask],
+        T_prev=state.first_poses[candidates_to_add_mask],
+        keypoints_curr=state.candidate_points[candidates_to_add_mask],
         T_curr=current_camera_pose,
         K=K,
     )
@@ -403,13 +414,13 @@ def add_new_landmarks(
     new_landmarks = new_landmarks[valid_mask]
 
     # Prune added candidates from candidate lists
-    S["C"] = S["C"][~candidates_to_add_mask]
-    S["F"] = S["F"][~candidates_to_add_mask]
-    S["T"] = S["T"][~candidates_to_add_mask]
+    state.candidate_points = state.candidate_points[~candidates_to_add_mask]
+    state.first_points = state.first_points[~candidates_to_add_mask]
+    state.first_poses = state.first_poses[~candidates_to_add_mask]
 
     # Add new keypoints and landmarks to the structure
-    S["P"] = np.concatenate((S["P"], new_keypoints), axis=0)
-    S["X"] = np.concatenate((S["X"], new_landmarks), axis=0)
+    state.keypoints = np.concatenate((state.keypoints, new_keypoints), axis=0)
+    state.landmarks = np.concatenate((state.landmarks, new_landmarks), axis=0)
 
     # --- Refill candidates ---
     # Choose how many new candidates are needed
@@ -431,19 +442,21 @@ def add_new_landmarks(
     # Detect new candidate keypoints in the current frame, that are not redundant with existing keypoints, or candidates
     new_candidate_keypoints, candidate_info = detect_new_candidate_keypoints(
         image=image_next,
-        existing_keypoints=S["P"],
-        existing_candidates=S["C"],
+        existing_keypoints=state.keypoints,
+        existing_candidates=state.candidate_points,
         num_candidates=num_new_candidates_needed,
-        num_current_candidates=S["C"].shape[0],
+        num_current_candidates=state.candidate_points.shape[0],
         cfg=cfg,
     )
 
     # Add new candidates to the state
-    S["C"] = np.vstack((S["C"], new_candidate_keypoints))
-    S["F"] = np.vstack((S["F"], new_candidate_keypoints))
-    S["T"] = np.vstack(
+    state.candidate_points = np.vstack(
+        (state.candidate_points, new_candidate_keypoints)
+    )
+    state.first_points = np.vstack((state.first_points, new_candidate_keypoints))
+    state.first_poses = np.vstack(
         (
-            S["T"],
+            state.first_poses,
             np.repeat(
                 current_camera_pose[np.newaxis, :, :],
                 new_candidate_keypoints.shape[0],
@@ -470,7 +483,9 @@ def add_new_landmarks(
 
             # Create coverage ratio: fraction of bins that have at least k keypoints
             k = int(
-                S["P"].shape[0] / (num_bins_horizontal * num_bins_vertical) * 0.5
+                state.keypoints.shape[0]
+                / (num_bins_horizontal * num_bins_vertical)
+                * 0.5
             )  # e.g., half the average
             num_covered_bins = np.sum(bin_count_array >= k)
             coverage_ratio = num_covered_bins / (
@@ -516,7 +531,7 @@ def add_new_landmarks(
                 candidate_info["lost_candidates_per_bin"] = lost_counts.tolist()
             info["Candidate dynamics"] = candidate_info
 
-    return S, new_landmarks, info
+    return state, new_landmarks, info
 
 
 def _filter_redundant_candidates(

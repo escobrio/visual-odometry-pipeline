@@ -2,6 +2,7 @@ import logging
 
 import cv2
 import numpy as np
+from visual_odometry.state import VOState
 
 from visual_odometry.bootstrap import bootstrap_VO
 from visual_odometry.data_loader import VOConfig, load_dataset
@@ -24,9 +25,9 @@ class VisualOdometryPipeline:
         self.global_landmarks = []
 
     def run(self):
-        S, frame_idx, n_frames = self.initialize()
+        state, frame_idx, n_frames = self.initialize()
         for frame_id in range(frame_idx + 1, n_frames):
-            S = self.step(S, frame_id)
+            state = self.step(state, frame_id)
 
         if self.cfg.visualize and self.visualizer is not None:
             self.visualizer.close()
@@ -50,39 +51,38 @@ class VisualOdometryPipeline:
             candidate_camera_poses_i,
         ) = self._initialize_candidate_keypoints(keypoints_i, landmarks_i, first_image)
 
-        # State dict
-        S = {
-            "P": keypoints_i,
-            "X": landmarks_i,
-            "C": candidate_keypoints_i,
-            "F": candidate_first_observation_i,
-            "T": candidate_camera_poses_i,
-        }
+        state = VOState(
+            keypoints=keypoints_i,
+            landmarks=landmarks_i,
+            candidate_points=candidate_keypoints_i,
+            first_points=candidate_first_observation_i,
+            first_poses=candidate_camera_poses_i,
+        )
 
         # Initialize global camera pose and landmarks storage
         self.global_camera_poses = [initial_camera_pose]
-        self.global_landmarks = S["X"].copy()
+        self.global_landmarks = landmarks_i
 
         # Initialize info printing
         info = {
-            "num_keypoints": S["P"].shape[0],
-            "num_landmarks": S["X"].shape[0],
-            "num_candidates": S["C"].shape[0],
+            "num_keypoints": state.keypoints.shape[0],
+            "num_landmarks": state.landmarks.shape[0],
+            "num_candidates": state.candidate_points.shape[0],
         }
 
-        logger.info(format_info(info, header="Initial State S"))
+        logger.info(format_info(info, header="Initial State"))
 
         # Start with the last used image in bootstrap
         self.prev_image = cv2.imread(self.images_paths[frame_idx], cv2.IMREAD_GRAYSCALE)
         n_frames = min(self.cfg.n_frames, self.last_frame)
 
-        return S, frame_idx, n_frames
+        return state, frame_idx, n_frames
 
-    def step(self, S, frame_idx):
+    def step(self, state, frame_idx):
 
         current_image = cv2.imread(self.images_paths[frame_idx], cv2.IMREAD_GRAYSCALE)
-        prev_keypoints = S["P"]
-        landmarks_3d = S["X"]
+        prev_keypoints = state.keypoints
+        landmarks_3d = state.landmarks
 
         prev_keypoints, tracked_landmarks_3d, tracked_keypoints = (
             self._track_keypoints_klt(prev_keypoints, landmarks_3d, current_image)
@@ -99,12 +99,12 @@ class VisualOdometryPipeline:
         P_prev_inliers = prev_keypoints[inlier_mask]
 
         # Update state S with inliers only
-        S["P"] = keypoints_next
-        S["X"] = landmarks_next
+        state.keypoints = keypoints_next
+        state.landmarks = landmarks_next
 
         # Triangulate new landmarks and maintain candidates
-        S, new_landmarks, info_new_landmarks = add_new_landmarks(
-            S,
+        state, new_landmarks, info_new_landmarks = add_new_landmarks(
+            state,
             self.prev_image,
             current_image,
             self.K,
@@ -117,7 +117,7 @@ class VisualOdometryPipeline:
         self.prev_image = current_image
 
         formated_info_string = self._log_info(
-            S, info_new_landmarks, current_camera_pose, frame_idx
+            state, info_new_landmarks, current_camera_pose, frame_idx
         )
 
         if self.cfg.visualize and self.visualizer is not None:
@@ -131,7 +131,7 @@ class VisualOdometryPipeline:
                 formated_info_string,
             )
 
-        return S
+        return state
 
     def _track_keypoints_klt(self, prev_keypoints, landmarks_3d, current_image):
         prev_keypoints = prev_keypoints.reshape(-1, 1, 2).astype(
@@ -280,11 +280,11 @@ class VisualOdometryPipeline:
                 f"  Reprojection errors - Outliers: mean={outlier_errors.mean():.2f}px, median={np.median(outlier_errors):.2f}px"
             )
 
-    def _log_info(self, S, info_new_landmarks, T_WC_current, frame_idx):
+    def _log_info(self, state, info_new_landmarks, T_WC_current, frame_idx):
         info = {}
-        info["num_keypoints"] = S["P"].shape[0]
-        info["num_landmarks"] = S["X"].shape[0]
-        info["num_candidates"] = S["C"].shape[0]
+        info["num_keypoints"] = state.keypoints.shape[0]
+        info["num_landmarks"] = state.landmarks.shape[0]
+        info["num_candidates"] = state.candidate_points.shape[0]
         info["new_landmarks"] = info_new_landmarks
         info["camera_pose"] = {
             "t_x": T_WC_current[0, 3],
