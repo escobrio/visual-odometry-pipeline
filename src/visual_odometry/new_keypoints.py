@@ -227,29 +227,9 @@ def add_new_landmarks(
     pipeline = cfg["pipeline"]
     log_info = pipeline.get("log", False)
 
-    # --- Take care of candidates to keypoint conversion ---
-    # Track candidate keypoints between frames using KLT
-    prev_cand = state.candidate_points.reshape(-1, 1, 2).astype(np.float32)
-    candidates_next, status_cand, error_cand = cv2.calcOpticalFlowPyrLK(
-        prevImg=image,
-        nextImg=image_next,
-        prevPts=prev_cand,
-        nextPts=None,
-        **lk_params,  # falls du welche nutzt
+    state, status_cand, mask, previous_candidates = _track_candidate_keypoints_klt(
+        image, image_next, state, lk_params
     )
-
-    # Guard
-    if status_cand is None or candidates_next is None:
-        status_cand = None
-    else:
-        mask = status_cand.flatten().astype(bool)
-
-        candidates_next = candidates_next[mask].reshape(-1, 2)  # [N, 2]
-        previous_candidates = state.candidate_points
-
-        state.candidate_points = candidates_next
-        state.first_points = state.first_points[mask]
-        state.first_poses = state.first_poses[mask]
 
     # -- Decide based on angle change, which candidates to convert to keypoints and landmarks --
     # Parameters
@@ -532,6 +512,33 @@ def add_new_landmarks(
             info["Candidate dynamics"] = candidate_info
 
     return state, new_landmarks, info
+
+
+def _track_candidate_keypoints_klt(image, image_next, state, lk_params):
+    # --- Take care of candidates to keypoint conversion ---
+    # Track candidate keypoints between frames using KLT
+    prev_cand = state.candidate_points.reshape(-1, 1, 2).astype(np.float32)
+    candidates_next, status_cand, _ = cv2.calcOpticalFlowPyrLK(
+        prevImg=image,
+        nextImg=image_next,
+        prevPts=prev_cand,
+        nextPts=None,
+        **lk_params,  # falls du welche nutzt
+    )
+
+    # Guard
+    if status_cand is None or candidates_next is None:
+        status_cand = None
+    else:
+        mask = status_cand.flatten().astype(bool)
+
+        candidates_next = candidates_next[mask].reshape(-1, 2)  # [N, 2]
+        previous_candidates = state.candidate_points
+
+        state.candidate_points = candidates_next
+        state.first_points = state.first_points[mask]
+        state.first_poses = state.first_poses[mask]
+    return state, status_cand, mask, previous_candidates
 
 
 def _filter_redundant_candidates(
