@@ -241,51 +241,45 @@ def add_new_landmarks(
     new_keypoints = new_keypoints[valid_mask]
     new_landmarks = new_landmarks[valid_mask]
 
-    # Prune added candidates from candidate lists
-    state_candidate = VOState(
-        keypoints=[],
-        landmarks=[],
-        candidate_points=state_tracked.candidate_points[~candidates_to_add_mask],
-        first_points=state_tracked.first_points[~candidates_to_add_mask],
-        first_poses=state_tracked.first_poses[~candidates_to_add_mask],
-    )
+    # Update keypoints and landmarks with newly triangulated inliers
+    updated_keypoints = np.concatenate((state_tracked.keypoints, new_keypoints), axis=0)
+    updated_landmarks = np.concatenate((state_tracked.landmarks, new_landmarks), axis=0)
 
-    # Choose how many new candidates are needed
+    # Prune triangulated candidates from the candidate pool
+    surviving_candidate_points = state_tracked.candidate_points[~candidates_to_add_mask]
+    surviving_first_points = state_tracked.first_points[~candidates_to_add_mask]
+    surviving_first_poses = state_tracked.first_poses[~candidates_to_add_mask]
+
+    # Detect new candidate keypoints to replenish the pool
     num_new_candidates_needed = _calculate_num_new_candidates_needed(
         candidates_to_add_mask, status_cand, cfg
     )
-
-    # Detect new candidate keypoints in the current frame, that are not redundant with existing keypoints, or candidates
     new_candidate_keypoints, candidate_info = detect_new_candidate_keypoints(
         image=image_next,
-        existing_keypoints=np.concatenate(
-            (state_tracked.keypoints, new_keypoints), axis=0
-        ),
-        existing_candidates=state_candidate.candidate_points,
+        existing_keypoints=updated_keypoints,
+        existing_candidates=surviving_candidate_points,
         num_candidates=num_new_candidates_needed,
-        num_current_candidates=state_candidate.candidate_points.shape[0],
+        num_current_candidates=surviving_candidate_points.shape[0],
         cfg=cfg,
     )
 
+    # Construct final VOState
+    new_candidate_poses = np.repeat(
+        current_camera_pose[np.newaxis, :, :],
+        new_candidate_keypoints.shape[0],
+        axis=0,
+    )
     state_final = VOState(
-        keypoints=np.concatenate((state_tracked.keypoints, new_keypoints), axis=0),
-        landmarks=np.concatenate((state_tracked.landmarks, new_landmarks), axis=0),
+        keypoints=updated_keypoints,
+        landmarks=updated_landmarks,
         candidate_points=np.vstack(
-            (state_candidate.candidate_points, new_candidate_keypoints)
+            (surviving_candidate_points, new_candidate_keypoints)
         ),
-        first_points=np.vstack((state_candidate.first_points, new_candidate_keypoints)),
-        first_poses=np.vstack(
-            (
-                state_candidate.first_poses,
-                np.repeat(
-                    current_camera_pose[np.newaxis, :, :],
-                    new_candidate_keypoints.shape[0],
-                    axis=0,
-                ),
-            )
-        ),
+        first_points=np.vstack((surviving_first_points, new_candidate_keypoints)),
+        first_poses=np.vstack((surviving_first_poses, new_candidate_poses)),
     )
 
+    info = {}
     if log_info:
         info = _build_telemetry(
             new_keypoints,
