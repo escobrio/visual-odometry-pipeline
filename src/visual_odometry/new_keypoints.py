@@ -189,8 +189,6 @@ def add_new_landmarks(
     )
 
     # -- Decide based on angle change, which candidates to convert to keypoints and landmarks --
-    # Parameters
-
     bearing_angle = _calculate_bearing_angle(K, state, current_camera_pose)
 
     cand = (cfg or {}).get("candidates", {})
@@ -209,7 +207,7 @@ def add_new_landmarks(
             f"  Candidates passing angle threshold ({angle_threshold}°): {np.sum(candidate_passed_bearing_angle_mask)}/{len(bearing_angle)}"
         )
 
-    # Get ordered indicess for the best candidates to add (size based on angle)
+    # Get ordered indices for the best candidates to add (size based on angle)
     ordered_indices = np.argsort(bearing_angle[candidate_passed_bearing_angle_mask])[
         ::-1
     ]

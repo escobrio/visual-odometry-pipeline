@@ -84,7 +84,7 @@ class VisualOdometryPipeline:
         prev_keypoints = state.keypoints
         landmarks_3d = state.landmarks
 
-        prev_keypoints, tracked_landmarks_3d, tracked_keypoints = (
+        prev_keypoints_survived, tracked_landmarks_3d, tracked_keypoints = (
             self._track_keypoints_klt(prev_keypoints, landmarks_3d, current_image)
         )
 
@@ -96,7 +96,7 @@ class VisualOdometryPipeline:
         # prune lost landmarks and keypoints
         keypoints_next = tracked_keypoints[inlier_mask]
         landmarks_next = tracked_landmarks_3d[inlier_mask]
-        P_prev_inliers = prev_keypoints[inlier_mask]
+        P_prev_inliers = prev_keypoints_survived[inlier_mask]
 
         # Update state S with inliers only
         state.keypoints = keypoints_next
@@ -155,31 +155,30 @@ class VisualOdometryPipeline:
         landmarks_3d = landmarks_3d[is_tracked]
         return prev_keypoints.reshape(-1, 2), landmarks_3d, current_keypoints
 
-    def _estimate_camera_pose(self, landmarks_3d, current_keypoints):
+    def _estimate_camera_pose(self, landmarks_3d, keypoints):
         # Use PnP RANSAC to estimate the new camera pose
         # solvePnPRansac returns transformation from world to camera (T_CW)
         _, rvec, t_CW, inliers = cv2.solvePnPRansac(
             objectPoints=landmarks_3d,
-            imagePoints=current_keypoints,
+            imagePoints=keypoints,
             distCoeffs=None,
             cameraMatrix=self.K,
         )
-        R_CW, _ = cv2.Rodrigues(rvec)
 
         # Create boolean mask from inlier indices
-        num_points = len(landmarks_3d)
-        inlier_mask = np.zeros(num_points, dtype=bool)
+        inlier_mask = np.zeros(len(landmarks_3d), dtype=bool)
         if inliers is not None:
             inlier_mask[inliers.flatten()] = True
 
         # Debug: Calculate reprojection errors for all points
         if self.cfg.cfg["pipeline"]["log"]:
             self._log_reprojection_errors(
-                landmarks_3d, rvec, t_CW, current_keypoints, inlier_mask
+                landmarks_3d, rvec, t_CW, keypoints, inlier_mask
             )
 
         # Store the current camera pose globally
         # Build T_CW (camera from world) from PnP result
+        R_CW, _ = cv2.Rodrigues(rvec)
         T_CW = np.vstack((np.hstack((R_CW, t_CW)), [0, 0, 0, 1]))
         # Convert to T_WC (world from camera) for global pose
         current_T_WC = np.linalg.inv(T_CW)
