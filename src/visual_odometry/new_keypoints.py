@@ -211,87 +211,14 @@ def add_new_landmarks(
             f"  Candidates passing angle threshold ({angle_threshold}°): {np.sum(candidate_passed_bearing_angle_mask)}/{len(candidates_bearing_angle)}"
         )
 
-    # Get ordered indices for the best candidates to add (size based on angle)
-    ordered_indices = np.argsort(
-        candidates_bearing_angle[candidate_passed_bearing_angle_mask]
-    )[::-1]
-    candidates_to_add = candidate_passed_bearing_angle_mask[
-        candidate_passed_bearing_angle_mask
-    ][ordered_indices]
-    num_candidates_available = candidates_to_add.shape[0]
-
-    # Limit the number of total keypoints tracked
-    num_keypoints_current = state_tracked.keypoints.shape[0]
-    num_keypoints_to_add = min(
-        num_candidates_available, max_keypoints - num_keypoints_current
+    candidates_to_add_mask, bin_count, quota_per_bin = _get_candidates_mask(
+        candidates_bearing_angle,
+        candidate_passed_bearing_angle_mask,
+        state_tracked,
+        max_keypoints,
+        cfg,
+        image,
     )
-    num_keypoints_to_add = max(num_keypoints_to_add, 0)
-
-    bin = (cfg or {}).get("bin", {})
-    use_binning = bin.get("use_binning", True)
-    num_bins_horizontal = bin.get("num_bins_horizontal", 3)
-    num_bins_vertical = bin.get("num_bins_vertical", 2)
-
-    if not use_binning:
-        # Add candidates based on bearing angle only
-        candidates_to_add_mask = np.zeros(
-            (state_tracked.candidate_points.shape[0],), dtype=bool
-        )
-        candidates_to_add_mask[
-            np.where(candidate_passed_bearing_angle_mask)[0][
-                ordered_indices[:num_keypoints_to_add]
-            ]
-        ] = True
-    else:
-        # -- Bin the candidates to add, and prefer even distribution and candidates from less populated bins preferred --
-        # Get image dimensions
-        img_h, img_w = image.shape[:2]
-
-        # Build bins for current keypoints
-        existing_keypoints = state_tracked.keypoints
-        bin_count = _weighted_bin_counts(
-            existing_keypoints,
-            None,
-            img_w,
-            img_h,
-            num_bins_horizontal,
-            num_bins_vertical,
-            1,
-            0.0,
-        )
-        weight_bins = 1.0 / (bin_count + 1e-6)
-
-        # Distribute quota per bin
-        quota_per_bin = _allocate_quota(num_keypoints_to_add, weight_bins)
-
-        # Build map from bin to candidates to add
-        candidates_to_add_points = state_tracked.candidate_points[
-            np.where(candidate_passed_bearing_angle_mask)[0][ordered_indices]
-        ]
-        map_candidates_to_bin = _bin_identifier(
-            candidates_to_add_points,
-            img_w,
-            img_h,
-            num_bins_horizontal,
-            num_bins_vertical,
-        )
-
-        # Select candidates to add based on bin quotas
-        selected_candidates_idx = _select_candidates_with_redistribution(
-            candidates_to_add_points,
-            map_candidates_to_bin,
-            quota_per_bin,
-            num_keypoints_to_add,
-        )
-
-        # Build final mask
-        candidates_to_add_mask = np.zeros(
-            (state_tracked.candidate_points.shape[0],), dtype=bool
-        )
-        selected_global_indices = np.where(candidate_passed_bearing_angle_mask)[0][
-            ordered_indices[selected_candidates_idx]
-        ]
-        candidates_to_add_mask[selected_global_indices] = True
 
     # Add selected candidates to keypoints and landmarks
     new_keypoints = state_tracked.candidate_points[candidates_to_add_mask]
@@ -398,6 +325,98 @@ def add_new_landmarks(
         )
 
     return state_final, new_landmarks, info
+
+
+def _get_candidates_mask(
+    candidates_bearing_angle,
+    candidate_passed_bearing_angle_mask,
+    state_tracked,
+    max_keypoints,
+    cfg,
+    image,
+):
+    # Get ordered indices for the best candidates to add (size based on angle)
+    ordered_indices = np.argsort(
+        candidates_bearing_angle[candidate_passed_bearing_angle_mask]
+    )[::-1]
+    candidates_to_add = candidate_passed_bearing_angle_mask[
+        candidate_passed_bearing_angle_mask
+    ][ordered_indices]
+    num_candidates_available = candidates_to_add.shape[0]
+
+    # Limit the number of total keypoints tracked
+    num_keypoints_current = state_tracked.keypoints.shape[0]
+    num_keypoints_to_add = min(
+        num_candidates_available, max_keypoints - num_keypoints_current
+    )
+    num_keypoints_to_add = max(num_keypoints_to_add, 0)
+
+    bin = (cfg or {}).get("bin", {})
+    use_binning = bin.get("use_binning", True)
+
+    if not use_binning:
+        # Add candidates based on bearing angle only
+        candidates_to_add_mask = np.zeros(
+            (state_tracked.candidate_points.shape[0],), dtype=bool
+        )
+        candidates_to_add_mask[
+            np.where(candidate_passed_bearing_angle_mask)[0][
+                ordered_indices[:num_keypoints_to_add]
+            ]
+        ] = True
+    else:
+        num_bins_horizontal = bin.get("num_bins_horizontal", 3)
+        num_bins_vertical = bin.get("num_bins_vertical", 2)
+        # -- Bin the candidates to add, and prefer even distribution and candidates from less populated bins preferred --
+        # Get image dimensions
+        img_h, img_w = image.shape[:2]
+
+        # Build bins for current keypoints
+        existing_keypoints = state_tracked.keypoints
+        bin_count = _weighted_bin_counts(
+            existing_keypoints,
+            None,
+            img_w,
+            img_h,
+            num_bins_horizontal,
+            num_bins_vertical,
+            1,
+            0.0,
+        )
+        weight_bins = 1.0 / (bin_count + 1e-6)
+
+        # Distribute quota per bin
+        quota_per_bin = _allocate_quota(num_keypoints_to_add, weight_bins)
+
+        # Build map from bin to candidates to add
+        candidates_to_add_points = state_tracked.candidate_points[
+            np.where(candidate_passed_bearing_angle_mask)[0][ordered_indices]
+        ]
+        map_candidates_to_bin = _bin_identifier(
+            candidates_to_add_points,
+            img_w,
+            img_h,
+            num_bins_horizontal,
+            num_bins_vertical,
+        )
+
+        # Select candidates to add based on bin quotas
+        selected_candidates_idx = _select_candidates_with_redistribution(
+            candidates_to_add_points,
+            map_candidates_to_bin,
+            quota_per_bin,
+            num_keypoints_to_add,
+        )
+
+        # Build final mask
+        candidates_to_add_mask = np.zeros(
+            (state_tracked.candidate_points.shape[0],), dtype=bool
+        )
+        selected_global_indices = np.where(candidate_passed_bearing_angle_mask)[0][
+            ordered_indices[selected_candidates_idx]
+        ]
+        candidates_to_add_mask[selected_global_indices] = True
+    return candidates_to_add_mask, bin_count, quota_per_bin
 
 
 def _build_telemetry(
