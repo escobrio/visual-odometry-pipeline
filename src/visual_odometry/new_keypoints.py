@@ -190,28 +190,31 @@ def add_new_landmarks(
     )
 
     # -- Decide based on angle change, which candidates to convert to keypoints and landmarks --
-    bearing_angle = _calculate_bearing_angle(K, state_tracked, current_camera_pose)
+    candidates_bearing_angle = _calculate_bearing_angle(
+        K, state_tracked, current_camera_pose
+    )
 
     cand = (cfg or {}).get("candidates", {})
     angle_threshold = cand.get("angle_threshold_deg", 10.0)
     max_keypoints = cand.get("max_keypoints", 1000)
 
-    candidate_passed_bearing_angle_mask = bearing_angle > angle_threshold
+    # This is the criterium to promote a candidate to an actual keypoint and landmark!
+    candidate_passed_bearing_angle_mask = candidates_bearing_angle > angle_threshold
 
     # Debug: Log bearing angle statistics
     if log_info and state_tracked.candidate_points.shape[0] > 0:
         logger.info(
-            f"  Bearing angles: min={bearing_angle.min():.2f}°, max={bearing_angle.max():.2f}°, "
-            f"mean={bearing_angle.mean():.2f}°, median={np.median(bearing_angle):.2f}°"
+            f"  Bearing angles: min={candidates_bearing_angle.min():.2f}°, max={candidates_bearing_angle.max():.2f}°, "
+            f"mean={candidates_bearing_angle.mean():.2f}°, median={np.median(candidates_bearing_angle):.2f}°"
         )
         logger.info(
-            f"  Candidates passing angle threshold ({angle_threshold}°): {np.sum(candidate_passed_bearing_angle_mask)}/{len(bearing_angle)}"
+            f"  Candidates passing angle threshold ({angle_threshold}°): {np.sum(candidate_passed_bearing_angle_mask)}/{len(candidates_bearing_angle)}"
         )
 
     # Get ordered indices for the best candidates to add (size based on angle)
-    ordered_indices = np.argsort(bearing_angle[candidate_passed_bearing_angle_mask])[
-        ::-1
-    ]
+    ordered_indices = np.argsort(
+        candidates_bearing_angle[candidate_passed_bearing_angle_mask]
+    )[::-1]
     candidates_to_add = candidate_passed_bearing_angle_mask[
         candidate_passed_bearing_angle_mask
     ][ordered_indices]
@@ -566,8 +569,8 @@ def _calculate_bearing_angle(K, state, current_camera_pose):
     cur_norms = np.linalg.norm(current_bearing_vectors, axis=1)
     cos_angles = dots / (old_norms * cur_norms + 1e-12)
 
-    bearing_angle = np.arccos(np.clip(cos_angles, -1.0, 1.0)) * (180.0 / np.pi)
-    return bearing_angle
+    bearing_angles = np.arccos(np.clip(cos_angles, -1.0, 1.0)) * (180.0 / np.pi)
+    return bearing_angles
 
 
 def _filter_redundant_candidates(
