@@ -257,7 +257,7 @@ def _detect_keypoints_per_bin(
             bin_quota = quota_per_bin[by * num_bins_horizontal + bx]
             if bin_quota <= 0:
                 continue
-            max_corners = int(bin_quota * oversample)
+            max_corners = int((bin_quota * oversample).item())
             bin_img = image[y_0:y_1, x_0:x_1]
 
             points = cv2.goodFeaturesToTrack(
