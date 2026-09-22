@@ -30,8 +30,4 @@ def format_info(info: dict, header: str | None = None) -> str:
 
     _recurse(info, indent=0)
 
-    # add two empty lines at the end for better separation
-    lines.append("")
-    lines.append("")
-
     return "\n".join(lines)

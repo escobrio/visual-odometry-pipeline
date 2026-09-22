@@ -9,12 +9,6 @@ logger = logging.getLogger(__name__)
 
 
 def main():
-
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    )
-
     parser = argparse.ArgumentParser(description="Visual Odometry Pipeline")
     parser.add_argument(
         "--dataset",
@@ -23,7 +17,18 @@ def main():
         required=True,
         help="The course project website hosts the first 3 datasets",
     )
+    parser.add_argument(
+        "--verbose",
+        "-v",
+        action="store_true",
+        help="Enable debug logging",
+    )
     args = parser.parse_args()
+
+    logging.basicConfig(
+        level=logging.DEBUG if args.verbose else logging.INFO,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    )
     dataset_name = "own_dataset" if args.dataset == "own_datasets" else args.dataset
 
     PROJECT_ROOT = Path(__file__).resolve().parents[2]

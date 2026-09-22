@@ -202,12 +202,14 @@ def add_new_landmarks(
     candidate_passed_bearing_angle_mask = candidates_bearing_angle > angle_threshold
 
     # Debug: Log bearing angle statistics
-    if log_info and state_tracked.candidate_points.shape[0] > 0:
-        logger.info(
+    if (
+        log_info or logger.isEnabledFor(logging.DEBUG)
+    ) and state_tracked.candidate_points.shape[0] > 0:
+        logger.debug(
             f"  Bearing angles: min={candidates_bearing_angle.min():.2f}°, max={candidates_bearing_angle.max():.2f}°, "
             f"mean={candidates_bearing_angle.mean():.2f}°, median={np.median(candidates_bearing_angle):.2f}°"
         )
-        logger.info(
+        logger.debug(
             f"  Candidates passing angle threshold ({angle_threshold}°): {np.sum(candidate_passed_bearing_angle_mask)}/{len(candidates_bearing_angle)}"
         )
 
@@ -231,8 +233,8 @@ def add_new_landmarks(
     )
 
     # Debug: Log cheirality check results
-    if log_info and len(valid_mask) > 0:
-        logger.info(
+    if (log_info or logger.isEnabledFor(logging.DEBUG)) and len(valid_mask) > 0:
+        logger.debug(
             f"  Cheirality check: {np.sum(valid_mask)}/{len(valid_mask)} landmarks valid "
             f"({100 * np.sum(valid_mask) / len(valid_mask):.1f}%)"
         )

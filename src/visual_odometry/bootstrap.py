@@ -115,8 +115,9 @@ def bootstrap_VO(images_paths, cfg, camera_intrinsics, visualizer):
     W_t_Wi = -R_Wi @ i_t_iW
 
     logger.info(
-        f"Bootstrap complete. Pose translation norm: {np.linalg.norm(W_t_Wi):.3f},\n"
-        f"Rotation:\n{R_Wi}\nTranslation:\n{W_t_Wi}"
+        f"Bootstrap complete. Pose translation norm: {np.linalg.norm(W_t_Wi):.3f}"
     )
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug(f"Bootstrap Rotation:\n{R_Wi}\nTranslation:\n{W_t_Wi}")
 
     return R_Wi, W_t_Wi, landmarks_3d.T, points_i, frame_idx

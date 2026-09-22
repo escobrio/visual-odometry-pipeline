@@ -54,6 +54,6 @@ def RANSAC_P3P(P, P_next, K, cfg: Optional[Dict[str, Any]] = None):
         )
         inlier_mask = inlier_mask_cv.flatten().astype(bool)
     else:
-        logger.info("Not enough inliers found for pose estimation.")
+        logger.warning("Not enough inliers found for pose estimation.")
 
     return R_C_W, t_C_W, inlier_mask

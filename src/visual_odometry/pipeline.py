@@ -72,7 +72,12 @@ class VisualOdometryPipeline:
             "num_candidates": state.candidate_points.shape[0],
         }
 
-        logger.info(format_info(info, header="Initial State"))
+        logger.info(
+            f"Pipeline initialized: {state.keypoints.shape[0]} keypoints, "
+            f"{state.landmarks.shape[0]} landmarks, {state.candidate_points.shape[0]} candidates"
+        )
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(format_info(info, header="Initial State"))
 
         # Start with the last used image in bootstrap
         self.prev_image = cv2.imread(self.images_paths[frame_idx], cv2.IMREAD_GRAYSCALE)
@@ -173,7 +178,9 @@ class VisualOdometryPipeline:
             inlier_mask[inliers.flatten()] = True
 
         # Debug: Calculate reprojection errors for all points
-        if self.cfg.cfg["pipeline"]["log"]:
+        if self.cfg.cfg["pipeline"].get("log", False) or logger.isEnabledFor(
+            logging.DEBUG
+        ):
             self._log_reprojection_errors(
                 landmarks_3d, rvec, t_CW, keypoints, inlier_mask
             )
@@ -265,19 +272,19 @@ class VisualOdometryPipeline:
         outlier_errors = reproj_errors[~inlier_mask]
 
         num_points = len(landmarks_3d)
-        logger.info(
+        logger.debug(
             f"  PnP: {np.sum(inlier_mask)}/{num_points} inliers ({100 * np.sum(inlier_mask) / num_points:.1f}%)"
         )
-        logger.info(
+        logger.debug(
             f"  Reprojection errors - All: min={reproj_errors.min():.2f}px, max={reproj_errors.max():.2f}px, "
             f"mean={reproj_errors.mean():.2f}px, median={np.median(reproj_errors):.2f}px"
         )
         if len(inlier_errors) > 0:
-            logger.info(
+            logger.debug(
                 f"  Reprojection errors - Inliers: mean={inlier_errors.mean():.2f}px, median={np.median(inlier_errors):.2f}px, max={inlier_errors.max():.2f}px"
             )
         if len(outlier_errors) > 0:
-            logger.info(
+            logger.debug(
                 f"  Reprojection errors - Outliers: mean={outlier_errors.mean():.2f}px, median={np.median(outlier_errors):.2f}px"
             )
 
@@ -306,9 +313,27 @@ class VisualOdometryPipeline:
                 bin_cfg.get("num_bins_vertical", 2),
             )
 
+        num_new_lm = (
+            landmark_stats.num_new_landmarks
+            if hasattr(landmark_stats, "num_new_landmarks")
+            else (
+                info["new_landmarks"].get("num_new_landmarks", 0)
+                if isinstance(info["new_landmarks"], dict)
+                else 0
+            )
+        )
+        logger.info(
+            f"Frame {frame_idx:03d} | "
+            f"kpts: {state.keypoints.shape[0]} | "
+            f"lmks: {state.landmarks.shape[0]} (+{num_new_lm}) | "
+            f"cand: {state.candidate_points.shape[0]} | "
+            f"pos: [{T_WC_current[0, 3]:.2f}, {T_WC_current[1, 3]:.2f}, {T_WC_current[2, 3]:.2f}]"
+        )
+
         formated_info_string = format_info(
             info, header=f"Frame {frame_idx} - New Landmarks Info"
         )
-        logger.info(formated_info_string)
-        logger.info(f"shape of all landmarks: {self.global_landmarks.shape}")
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(formated_info_string)
+            logger.debug(f"Shape of all landmarks: {self.global_landmarks.shape}")
         return formated_info_string
