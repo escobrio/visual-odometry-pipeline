@@ -378,72 +378,105 @@ def add_new_landmarks(
     )
 
     if log_info:
-        info = {
-            "num_new_keypoints": new_keypoints.shape[0],
-            "num_new_landmarks": new_landmarks.shape[0],
-            "num_lost_candidates": num_lost_candidates,
-            "num_new_candidates_detected": new_candidate_keypoints.shape[0],
-            "num_new_candidates_needed": num_new_candidates_needed,
-        }
+        info = _build_telemetry(
+            new_keypoints,
+            new_landmarks,
+            new_candidate_keypoints,
+            num_new_candidates_needed,
+            cfg,
+            bin_count,
+            quota_per_bin,
+            state_final,
+            image,
+            previous_candidates,
+            status_cand,
+            candidate_info,
+            mask,
+        )
 
-        if use_binning:
-            # create a np.array in the shape of the bins
-            bin_shape = (num_bins_vertical, num_bins_horizontal)
-            # use bin_count variable to fill the array
-            bin_count_array = bin_count.reshape(bin_shape)
-            info["bin_counts_keypoints"] = bin_count_array.tolist()
+    return state_final, new_landmarks, info
 
-            # Create coverage ratio: fraction of bins that have at least k keypoints
-            k = int(
-                state_final.keypoints.shape[0]
-                / (num_bins_horizontal * num_bins_vertical)
-                * 0.5
-            )  # e.g., half the average
-            num_covered_bins = np.sum(bin_count_array >= k)
-            coverage_ratio = num_covered_bins / (
-                num_bins_horizontal * num_bins_vertical
-            )
-            info["coverage_ratio"] = coverage_ratio
 
-            # Log the quota per bin as well
-            quota_array = quota_per_bin.reshape(bin_shape)
-            info["bin_quotas_keypoints"] = quota_array.tolist()
+def _build_telemetry(
+    new_keypoints,
+    new_landmarks,
+    new_candidate_keypoints,
+    num_new_candidates_needed,
+    cfg,
+    bin_count,
+    quota_per_bin,
+    state_final,
+    image,
+    previous_candidates,
+    status_cand,
+    candidate_info,
+    mask,
+):
+    num_lost_candidates = np.count_nonzero(~status_cand.flatten())
+    info = {
+        "num_new_keypoints": new_keypoints.shape[0],
+        "num_new_landmarks": new_landmarks.shape[0],
+        "num_lost_candidates": num_lost_candidates,
+        "num_new_candidates_detected": new_candidate_keypoints.shape[0],
+        "num_new_candidates_needed": num_new_candidates_needed,
+    }
 
-            # Log how many candidates where converted to new keypoints from each bin
-            map_converted_candidates_to_bin = _bin_identifier(
-                new_keypoints,
+    bin = (cfg or {}).get("bin", {})
+    use_binning = bin.get("use_binning", True)
+    num_bins_horizontal = bin.get("num_bins_horizontal", 3)
+    num_bins_vertical = bin.get("num_bins_vertical", 2)
+
+    if use_binning:
+        # create a np.array in the shape of the bins
+        bin_shape = (num_bins_vertical, num_bins_horizontal)
+        # use bin_count variable to fill the array
+        bin_count_array = bin_count.reshape(bin_shape)
+        info["bin_counts_keypoints"] = bin_count_array.tolist()
+
+        # Create coverage ratio: fraction of bins that have at least k keypoints
+        k = int(
+            state_final.keypoints.shape[0]
+            / (num_bins_horizontal * num_bins_vertical)
+            * 0.5
+        )  # e.g., half the average
+        num_covered_bins = np.sum(bin_count_array >= k)
+        coverage_ratio = num_covered_bins / (num_bins_horizontal * num_bins_vertical)
+        info["coverage_ratio"] = coverage_ratio
+
+        # Log the quota per bin as well
+        quota_array = quota_per_bin.reshape(bin_shape)
+        info["bin_quotas_keypoints"] = quota_array.tolist()
+
+        # Log how many candidates where converted to new keypoints from each bin
+        map_converted_candidates_to_bin = _bin_identifier(
+            new_keypoints,
+            image.shape[1],
+            image.shape[0],
+            num_bins_horizontal,
+            num_bins_vertical,
+        )
+        converted_counts = np.zeros((num_bins_vertical, num_bins_horizontal), dtype=int)
+        for b in range(num_bins_vertical * num_bins_horizontal):
+            converted_counts.flat[b] = np.sum(map_converted_candidates_to_bin == b)
+        info["converted_candidates_to_keypoints"] = converted_counts.tolist()
+
+        # Log the candidate dynamics here
+        # Log how many candidates were lost from each bin
+        if status_cand is not None:
+            lost_candidates = previous_candidates[~mask]
+            map_lost_candidates_to_bin = _bin_identifier(
+                lost_candidates,
                 image.shape[1],
                 image.shape[0],
                 num_bins_horizontal,
                 num_bins_vertical,
             )
-            converted_counts = np.zeros(
-                (num_bins_vertical, num_bins_horizontal), dtype=int
-            )
+            lost_counts = np.zeros((num_bins_vertical, num_bins_horizontal), dtype=int)
             for b in range(num_bins_vertical * num_bins_horizontal):
-                converted_counts.flat[b] = np.sum(map_converted_candidates_to_bin == b)
-            info["converted_candidates_to_keypoints"] = converted_counts.tolist()
-
-            # Log the candidate dynamics here
-            # Log how many candidates were lost from each bin
-            if status_cand is not None:
-                lost_candidates = previous_candidates[~mask]
-                map_lost_candidates_to_bin = _bin_identifier(
-                    lost_candidates,
-                    image.shape[1],
-                    image.shape[0],
-                    num_bins_horizontal,
-                    num_bins_vertical,
-                )
-                lost_counts = np.zeros(
-                    (num_bins_vertical, num_bins_horizontal), dtype=int
-                )
-                for b in range(num_bins_vertical * num_bins_horizontal):
-                    lost_counts.flat[b] = np.sum(map_lost_candidates_to_bin == b)
-                candidate_info["lost_candidates_per_bin"] = lost_counts.tolist()
-            info["Candidate dynamics"] = candidate_info
-
-    return state_final, new_landmarks, info
+                lost_counts.flat[b] = np.sum(map_lost_candidates_to_bin == b)
+            candidate_info["lost_candidates_per_bin"] = lost_counts.tolist()
+        info["Candidate dynamics"] = candidate_info
+    return info
 
 
 def _extract_lk_params(cfg):
