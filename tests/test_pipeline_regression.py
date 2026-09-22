@@ -1,3 +1,4 @@
+import pytest
 from pathlib import Path
 
 import cv2
@@ -24,11 +25,13 @@ def test_pipeline():
     assert len(pipeline.global_landmarks) == 629
 
     expected_pose_0 = np.array([1.0, 0.0017, -0.0016])
-    np.testing.assert_allclose(
-        pipeline.global_camera_poses[0][:3, 3], expected_pose_0, atol=1e-3
+    actual_pose_0 = pipeline.global_camera_poses[0][:3, 3]
+    assert actual_pose_0 == pytest.approx(expected_pose_0, abs=1e-3), (
+        f"First pose translation mismatch: got {actual_pose_0}, expected {expected_pose_0}"
     )
 
     expected_pose_last = np.array([3.5740, -0.0148, -0.0168])
-    np.testing.assert_allclose(
-        pipeline.global_camera_poses[-1][:3, 3], expected_pose_last, atol=1e-3
+    actual_pose_last = pipeline.global_camera_poses[-1][:3, 3]
+    assert actual_pose_last == pytest.approx(expected_pose_last, abs=1e-3), (
+        f"Last pose translation mismatch: got {actual_pose_last}, expected {expected_pose_last}"
     )
