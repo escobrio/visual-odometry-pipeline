@@ -211,7 +211,7 @@ def add_new_landmarks(
             f"  Candidates passing angle threshold ({angle_threshold}°): {np.sum(candidate_passed_bearing_angle_mask)}/{len(candidates_bearing_angle)}"
         )
 
-    candidates_to_add_mask, bin_count, quota_per_bin = _get_candidates_mask(
+    candidates_to_add_mask, info_bin_count, info_quota_per_bin = _get_candidates_mask(
         candidates_bearing_angle,
         candidate_passed_bearing_angle_mask,
         state_tracked,
@@ -260,24 +260,9 @@ def add_new_landmarks(
 
     # --- Refill candidates ---
     # Choose how many new candidates are needed
-    # TODO check if we can have a good heuristic for this
-    num_converted_candidates = np.count_nonzero(candidates_to_add_mask)
-    if status_cand is None:
-        num_lost_candidates = 0
-    else:
-        num_lost_candidates = np.count_nonzero(~status_cand.flatten())
-
-    cand = (cfg or {}).get("candidates", {})
-    need_mult = cand.get("need_multiplier", 1.5)
-    # TODO: this might be instable, maybe based on a global #keypoints goal or some sort of different quality metric
-    num_new_candidates_needed = int(
-        (num_converted_candidates + num_lost_candidates) * need_mult
+    num_new_candidates_needed = _calculate_num_new_candidates_needed(
+        candidates_to_add_mask, status_cand, cfg
     )
-
-    min_candidates_needed = cand.get("min_candidates_needed", 20)
-    max_new_candidates = cand.get("max_new_candidates", 50)
-    num_new_candidates_needed = max(num_new_candidates_needed, min_candidates_needed)
-    num_new_candidates_needed = min(num_new_candidates_needed, max_new_candidates)
 
     # Detect new candidate keypoints in the current frame, that are not redundant with existing keypoints, or candidates
     new_candidate_keypoints, candidate_info = detect_new_candidate_keypoints(
@@ -314,8 +299,8 @@ def add_new_landmarks(
             new_candidate_keypoints,
             num_new_candidates_needed,
             cfg,
-            bin_count,
-            quota_per_bin,
+            info_bin_count,
+            info_quota_per_bin,
             state_final,
             image,
             previous_candidates,
@@ -325,6 +310,27 @@ def add_new_landmarks(
         )
 
     return state_final, new_landmarks, info
+
+
+def _calculate_num_new_candidates_needed(candidates_to_add_mask, status_cand, cfg):
+    num_converted_candidates = np.count_nonzero(candidates_to_add_mask)
+    if status_cand is None:
+        num_lost_candidates = 0
+    else:
+        num_lost_candidates = np.count_nonzero(~status_cand.flatten())
+
+    cand = (cfg or {}).get("candidates", {})
+    need_mult = cand.get("need_multiplier", 1.5)
+    # TODO: this might be instable, maybe based on a global #keypoints goal or some sort of different quality metric
+    num_new_candidates_needed = int(
+        (num_converted_candidates + num_lost_candidates) * need_mult
+    )
+
+    min_candidates_needed = cand.get("min_candidates_needed", 20)
+    max_new_candidates = cand.get("max_new_candidates", 50)
+    num_new_candidates_needed = max(num_new_candidates_needed, min_candidates_needed)
+    num_new_candidates_needed = min(num_new_candidates_needed, max_new_candidates)
+    return num_new_candidates_needed
 
 
 def _get_candidates_mask(
