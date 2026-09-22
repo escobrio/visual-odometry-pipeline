@@ -20,3 +20,13 @@ class VOState:
             == len(self.first_poses)
         ):
             raise ValueError("candidate arrays must have matching lengths")
+
+
+@dataclass
+class LandmarkStepSummary:
+    num_new_keypoints: int = 0
+    num_new_landmarks: int = 0
+    num_lost_candidates: int = 0
+    num_candidates_detected: int = 0
+    num_candidates_needed: int = 0
+

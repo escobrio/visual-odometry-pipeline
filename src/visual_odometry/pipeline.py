@@ -1,8 +1,10 @@
+from dataclasses import asdict
 import logging
 
 import cv2
 import numpy as np
 
+from visual_odometry.binning import compute_bin_coverage
 from visual_odometry.bootstrap import bootstrap_VO
 from visual_odometry.data_loader import VOConfig, load_dataset
 from visual_odometry.new_keypoints import (
@@ -279,17 +281,31 @@ class VisualOdometryPipeline:
                 f"  Reprojection errors - Outliers: mean={outlier_errors.mean():.2f}px, median={np.median(outlier_errors):.2f}px"
             )
 
-    def _log_info(self, state, info_new_landmarks, T_WC_current, frame_idx):
-        info = {}
-        info["num_keypoints"] = state.keypoints.shape[0]
-        info["num_landmarks"] = state.landmarks.shape[0]
-        info["num_candidates"] = state.candidate_points.shape[0]
-        info["new_landmarks"] = info_new_landmarks
-        info["camera_pose"] = {
-            "t_x": T_WC_current[0, 3],
-            "t_y": T_WC_current[1, 3],
-            "t_z": T_WC_current[2, 3],
+    def _log_info(self, state, landmark_stats, T_WC_current, frame_idx):
+        info = {
+            "num_keypoints": state.keypoints.shape[0],
+            "num_landmarks": state.landmarks.shape[0],
+            "num_candidates": state.candidate_points.shape[0],
+            "new_landmarks": asdict(landmark_stats)
+            if hasattr(landmark_stats, "__dataclass_fields__")
+            else landmark_stats,
+            "camera_pose": {
+                "t_x": float(T_WC_current[0, 3]),
+                "t_y": float(T_WC_current[1, 3]),
+                "t_z": float(T_WC_current[2, 3]),
+            },
         }
+
+        # Add modular binning coverage telemetry if enabled
+        bin_cfg = self.cfg.cfg.get("bin", {})
+        if bin_cfg.get("use_binning", True):
+            info["binning"] = compute_bin_coverage(
+                state.keypoints,
+                self.prev_image.shape,
+                bin_cfg.get("num_bins_horizontal", 3),
+                bin_cfg.get("num_bins_vertical", 2),
+            )
+
         formated_info_string = format_info(
             info, header=f"Frame {frame_idx} - New Landmarks Info"
         )

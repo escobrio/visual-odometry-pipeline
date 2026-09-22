@@ -11,7 +11,7 @@ from visual_odometry.binning import (
     _select_candidates_with_redistribution,
     _weighted_bin_counts,
 )
-from visual_odometry.state import VOState
+from visual_odometry.state import LandmarkStepSummary, VOState
 from visual_odometry.triangulation import triangulate_new_landmarks
 
 logger = logging.getLogger(__name__)
@@ -185,8 +185,8 @@ def add_new_landmarks(
     log_info = cfg["pipeline"].get("log", False)
     lk_params = _extract_lk_params(cfg)
 
-    state_tracked, status_cand, mask, previous_candidates = (
-        _track_candidate_keypoints_klt(image, image_next, state, lk_params)
+    state_tracked, num_lost_candidates = _track_candidate_keypoints_klt(
+        image, image_next, state, lk_params
     )
 
     # -- Decide based on angle change, which candidates to convert to keypoints and landmarks --
@@ -211,7 +211,7 @@ def add_new_landmarks(
             f"  Candidates passing angle threshold ({angle_threshold}°): {np.sum(candidate_passed_bearing_angle_mask)}/{len(candidates_bearing_angle)}"
         )
 
-    candidates_to_add_mask, info_bin_count, info_quota_per_bin = _get_candidates_mask(
+    candidates_to_add_mask = _get_candidates_mask(
         candidates_bearing_angle,
         candidate_passed_bearing_angle_mask,
         state_tracked,
@@ -251,10 +251,11 @@ def add_new_landmarks(
     surviving_first_poses = state_tracked.first_poses[~candidates_to_add_mask]
 
     # Detect new candidate keypoints to replenish the pool
+    num_converted_candidates = int(np.count_nonzero(candidates_to_add_mask))
     num_new_candidates_needed = _calculate_num_new_candidates_needed(
-        candidates_to_add_mask, status_cand, cfg
+        num_converted_candidates, num_lost_candidates, cfg
     )
-    new_candidate_keypoints, candidate_info = detect_new_candidate_keypoints(
+    new_candidate_keypoints, _ = detect_new_candidate_keypoints(
         image=image_next,
         existing_keypoints=updated_keypoints,
         existing_candidates=surviving_candidate_points,
@@ -279,37 +280,22 @@ def add_new_landmarks(
         first_poses=np.vstack((surviving_first_poses, new_candidate_poses)),
     )
 
-    info = {}
-    if log_info:
-        info = _build_telemetry(
-            new_keypoints,
-            new_landmarks,
-            new_candidate_keypoints,
-            num_new_candidates_needed,
-            cfg,
-            info_bin_count,
-            info_quota_per_bin,
-            state_final,
-            image,
-            previous_candidates,
-            status_cand,
-            candidate_info,
-            mask,
-        )
+    summary = LandmarkStepSummary(
+        num_new_keypoints=len(new_keypoints),
+        num_new_landmarks=len(new_landmarks),
+        num_lost_candidates=num_lost_candidates,
+        num_candidates_detected=len(new_candidate_keypoints),
+        num_candidates_needed=num_new_candidates_needed,
+    )
 
-    return state_final, new_landmarks, info
+    return state_final, new_landmarks, summary
 
 
-def _calculate_num_new_candidates_needed(candidates_to_add_mask, status_cand, cfg):
-    num_converted_candidates = np.count_nonzero(candidates_to_add_mask)
-    if status_cand is None:
-        num_lost_candidates = 0
-    else:
-        num_lost_candidates = np.count_nonzero(~status_cand.flatten())
-
+def _calculate_num_new_candidates_needed(
+    num_converted_candidates: int, num_lost_candidates: int, cfg
+):
     cand = (cfg or {}).get("candidates", {})
     need_mult = cand.get("need_multiplier", 1.5)
-    # TODO: this might be instable, maybe based on a global #keypoints goal or some sort of different quality metric
     num_new_candidates_needed = int(
         (num_converted_candidates + num_lost_candidates) * need_mult
     )
@@ -329,60 +315,47 @@ def _get_candidates_mask(
     cfg,
     image,
 ):
-    # Get ordered indices for the best candidates to add (size based on angle)
     ordered_indices = np.argsort(
         candidates_bearing_angle[candidate_passed_bearing_angle_mask]
     )[::-1]
-    candidates_to_add = candidate_passed_bearing_angle_mask[
-        candidate_passed_bearing_angle_mask
-    ][ordered_indices]
-    num_candidates_available = candidates_to_add.shape[0]
+    num_candidates_available = len(ordered_indices)
 
     # Limit the number of total keypoints tracked
     num_keypoints_current = state_tracked.keypoints.shape[0]
-    num_keypoints_to_add = min(
-        num_candidates_available, max_keypoints - num_keypoints_current
+    num_keypoints_to_add = max(
+        0, min(num_candidates_available, max_keypoints - num_keypoints_current)
     )
-    num_keypoints_to_add = max(num_keypoints_to_add, 0)
 
-    bin = (cfg or {}).get("bin", {})
-    use_binning = bin.get("use_binning", True)
+    bin_cfg = (cfg or {}).get("bin", {})
+    use_binning = bin_cfg.get("use_binning", True)
+
+    candidates_to_add_mask = np.zeros(
+        (state_tracked.candidate_points.shape[0],), dtype=bool
+    )
 
     if not use_binning:
-        # Add candidates based on bearing angle only
-        candidates_to_add_mask = np.zeros(
-            (state_tracked.candidate_points.shape[0],), dtype=bool
-        )
-        candidates_to_add_mask[
-            np.where(candidate_passed_bearing_angle_mask)[0][
-                ordered_indices[:num_keypoints_to_add]
-            ]
-        ] = True
+        selected_global_indices = np.where(candidate_passed_bearing_angle_mask)[0][
+            ordered_indices[:num_keypoints_to_add]
+        ]
+        candidates_to_add_mask[selected_global_indices] = True
     else:
-        num_bins_horizontal = bin.get("num_bins_horizontal", 3)
-        num_bins_vertical = bin.get("num_bins_vertical", 2)
-        # -- Bin the candidates to add, and prefer even distribution and candidates from less populated bins preferred --
-        # Get image dimensions
+        num_bins_horizontal = bin_cfg.get("num_bins_horizontal", 3)
+        num_bins_vertical = bin_cfg.get("num_bins_vertical", 2)
         img_h, img_w = image.shape[:2]
 
-        # Build bins for current keypoints
-        existing_keypoints = state_tracked.keypoints
         bin_count = _weighted_bin_counts(
-            existing_keypoints,
+            state_tracked.keypoints,
             None,
             img_w,
             img_h,
             num_bins_horizontal,
             num_bins_vertical,
-            1,
+            1.0,
             0.0,
         )
         weight_bins = 1.0 / (bin_count + 1e-6)
-
-        # Distribute quota per bin
         quota_per_bin = _allocate_quota(num_keypoints_to_add, weight_bins)
 
-        # Build map from bin to candidates to add
         candidates_to_add_points = state_tracked.candidate_points[
             np.where(candidate_passed_bearing_angle_mask)[0][ordered_indices]
         ]
@@ -394,7 +367,6 @@ def _get_candidates_mask(
             num_bins_vertical,
         )
 
-        # Select candidates to add based on bin quotas
         selected_candidates_idx = _select_candidates_with_redistribution(
             candidates_to_add_points,
             map_candidates_to_bin,
@@ -402,97 +374,12 @@ def _get_candidates_mask(
             num_keypoints_to_add,
         )
 
-        # Build final mask
-        candidates_to_add_mask = np.zeros(
-            (state_tracked.candidate_points.shape[0],), dtype=bool
-        )
         selected_global_indices = np.where(candidate_passed_bearing_angle_mask)[0][
             ordered_indices[selected_candidates_idx]
         ]
         candidates_to_add_mask[selected_global_indices] = True
-    return candidates_to_add_mask, bin_count, quota_per_bin
 
-
-def _build_telemetry(
-    new_keypoints,
-    new_landmarks,
-    new_candidate_keypoints,
-    num_new_candidates_needed,
-    cfg,
-    bin_count,
-    quota_per_bin,
-    state_final,
-    image,
-    previous_candidates,
-    status_cand,
-    candidate_info,
-    mask,
-):
-    num_lost_candidates = np.count_nonzero(~status_cand.flatten())
-    info = {
-        "num_new_keypoints": new_keypoints.shape[0],
-        "num_new_landmarks": new_landmarks.shape[0],
-        "num_lost_candidates": num_lost_candidates,
-        "num_new_candidates_detected": new_candidate_keypoints.shape[0],
-        "num_new_candidates_needed": num_new_candidates_needed,
-    }
-
-    bin = (cfg or {}).get("bin", {})
-    use_binning = bin.get("use_binning", True)
-    num_bins_horizontal = bin.get("num_bins_horizontal", 3)
-    num_bins_vertical = bin.get("num_bins_vertical", 2)
-
-    if use_binning:
-        # create a np.array in the shape of the bins
-        bin_shape = (num_bins_vertical, num_bins_horizontal)
-        # use bin_count variable to fill the array
-        bin_count_array = bin_count.reshape(bin_shape)
-        info["bin_counts_keypoints"] = bin_count_array.tolist()
-
-        # Create coverage ratio: fraction of bins that have at least k keypoints
-        k = int(
-            state_final.keypoints.shape[0]
-            / (num_bins_horizontal * num_bins_vertical)
-            * 0.5
-        )  # e.g., half the average
-        num_covered_bins = np.sum(bin_count_array >= k)
-        coverage_ratio = num_covered_bins / (num_bins_horizontal * num_bins_vertical)
-        info["coverage_ratio"] = coverage_ratio
-
-        # Log the quota per bin as well
-        quota_array = quota_per_bin.reshape(bin_shape)
-        info["bin_quotas_keypoints"] = quota_array.tolist()
-
-        # Log how many candidates where converted to new keypoints from each bin
-        map_converted_candidates_to_bin = _bin_identifier(
-            new_keypoints,
-            image.shape[1],
-            image.shape[0],
-            num_bins_horizontal,
-            num_bins_vertical,
-        )
-        converted_counts = np.zeros((num_bins_vertical, num_bins_horizontal), dtype=int)
-        for b in range(num_bins_vertical * num_bins_horizontal):
-            converted_counts.flat[b] = np.sum(map_converted_candidates_to_bin == b)
-        info["converted_candidates_to_keypoints"] = converted_counts.tolist()
-
-        # Log the candidate dynamics here
-        # Log how many candidates were lost from each bin
-        if status_cand is not None:
-            lost_candidates = previous_candidates[~mask]
-            map_lost_candidates_to_bin = _bin_identifier(
-                lost_candidates,
-                image.shape[1],
-                image.shape[0],
-                num_bins_horizontal,
-                num_bins_vertical,
-            )
-            lost_counts = np.zeros((num_bins_vertical, num_bins_horizontal), dtype=int)
-            for b in range(num_bins_vertical * num_bins_horizontal):
-                lost_counts.flat[b] = np.sum(map_lost_candidates_to_bin == b)
-            candidate_info["lost_candidates_per_bin"] = lost_counts.tolist()
-        info["Candidate dynamics"] = candidate_info
-    return info
+    return candidates_to_add_mask
 
 
 def _extract_lk_params(cfg):
@@ -519,30 +406,33 @@ def _extract_lk_params(cfg):
 
 
 def _track_candidate_keypoints_klt(image, image_next, state, lk_params):
-    # --- Take care of candidates to keypoint conversion ---
     # Track candidate keypoints between frames using KLT
+    if len(state.candidate_points) == 0:
+        return state, 0
+
     prev_cand = state.candidate_points.reshape(-1, 1, 2).astype(np.float32)
     candidates_next, status_cand, _ = cv2.calcOpticalFlowPyrLK(
         prevImg=image,
         nextImg=image_next,
         prevPts=prev_cand,
         nextPts=None,
-        **lk_params,  # falls du welche nutzt
+        **lk_params,
     )
 
-    # Guard
     if status_cand is None or candidates_next is None:
-        status_cand = None
-    else:
-        mask = status_cand.flatten().astype(bool)
+        num_lost = len(state.candidate_points)
+        state.candidate_points = np.empty((0, 2), dtype=np.float32)
+        state.first_points = np.empty((0, 2), dtype=np.float32)
+        state.first_poses = np.empty((0, 4, 4), dtype=np.float32)
+        return state, num_lost
 
-        candidates_next = candidates_next[mask].reshape(-1, 2)  # [N, 2]
-        previous_candidates = state.candidate_points
+    mask = status_cand.flatten().astype(bool)
+    num_lost = int(np.count_nonzero(~mask))
 
-        state.candidate_points = candidates_next
-        state.first_points = state.first_points[mask]
-        state.first_poses = state.first_poses[mask]
-    return state, status_cand, mask, previous_candidates
+    state.candidate_points = candidates_next[mask].reshape(-1, 2)
+    state.first_points = state.first_points[mask]
+    state.first_poses = state.first_poses[mask]
+    return state, num_lost
 
 
 def _calculate_bearing_angle(K, state, current_camera_pose):

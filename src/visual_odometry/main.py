@@ -19,15 +19,16 @@ def main():
     parser.add_argument(
         "--dataset",
         type=str,
-        choices=["KITTI", "Malaga", "Parking", "own_datasets"],
+        choices=["KITTI", "Malaga", "Parking", "own_dataset", "own_datasets"],
         required=True,
         help="The course project website hosts the first 3 datasets",
     )
     args = parser.parse_args()
+    dataset_name = "own_dataset" if args.dataset == "own_datasets" else args.dataset
 
     PROJECT_ROOT = Path(__file__).resolve().parents[2]
     CONFIG_DIR = PROJECT_ROOT / "configs"
-    config_path = CONFIG_DIR / f"config_{args.dataset}.yaml"
+    config_path = CONFIG_DIR / f"config_{dataset_name}.yaml"
     config = VOConfig(config_path)
     logger.info(f"Loaded config from: {config_path}")
 

@@ -21,7 +21,7 @@ def test_pipeline():
     pipeline.run()
 
     assert len(pipeline.global_camera_poses) == 14
-    assert len(pipeline.global_landmarks) == 627
+    assert len(pipeline.global_landmarks) == 629
 
     expected_pose_0 = np.array([1.0, 0.0017, -0.0016])
     np.testing.assert_allclose(

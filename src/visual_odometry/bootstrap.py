@@ -3,7 +3,7 @@ import logging
 import cv2
 import numpy as np
 
-from visual_odometry.new_keypoints import _allocate_quota, _detect_keypoints_per_bin
+from visual_odometry.binning import _allocate_quota, _detect_keypoints_per_bin
 
 logger = logging.getLogger(__name__)
 

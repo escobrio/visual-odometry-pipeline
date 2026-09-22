@@ -276,22 +276,50 @@ def _detect_keypoints_per_bin(
                     qualityLevel=quality_level_bin,
                     minDistance=min_distance,
                 )
-                if points is None:
+                if points_new is not None:
                     points = points_new
-                else:
-                    if points_new is not None:
-                        points = np.vstack((points, points_new))
                 iteration += 1
                 if iteration >= max_iterations:
                     break
 
-            points = points.reshape(-1, 2)
-
-            # Adjust points to image coordinates
-            points[:, 0] += x_0
-            points[:, 1] += y_0
-            all_keypoints.append(points)
+            if points is not None and len(points) > 0:
+                points = points.reshape(-1, 2)
+                # Adjust points to image coordinates
+                points[:, 0] += x_0
+                points[:, 1] += y_0
+                all_keypoints.append(points)
 
     if len(all_keypoints) == 0:
         return np.empty((0, 2), dtype=np.float32)
     return np.vstack(all_keypoints)
+
+
+def compute_bin_coverage(
+    keypoints: np.ndarray,
+    img_shape: tuple,
+    num_bins_horizontal: int,
+    num_bins_vertical: int,
+) -> dict:
+    """Calculate keypoint distribution across bins and grid coverage ratio."""
+    if keypoints is None or len(keypoints) == 0:
+        return {
+            "bin_counts_keypoints": np.zeros(
+                (num_bins_vertical, num_bins_horizontal), dtype=int
+            ).tolist(),
+            "coverage_ratio": 0.0,
+        }
+
+    img_h, img_w = img_shape[:2]
+    bin_counts = _weighted_bin_counts(
+        keypoints, None, img_w, img_h, num_bins_horizontal, num_bins_vertical, 1.0, 0.0
+    )
+    bin_grid = bin_counts.reshape((num_bins_vertical, num_bins_horizontal))
+    total_bins = num_bins_horizontal * num_bins_vertical
+    threshold = int(len(keypoints) / total_bins * 0.5) if total_bins > 0 else 0
+    coverage_ratio = float(np.mean(bin_grid >= threshold)) if total_bins > 0 else 0.0
+
+    return {
+        "bin_counts_keypoints": bin_grid.astype(int).tolist(),
+        "coverage_ratio": round(coverage_ratio, 3),
+    }
+
