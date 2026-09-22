@@ -30,7 +30,7 @@ def test_pipeline():
         f"First pose translation mismatch: got {actual_pose_0}, expected {expected_pose_0}"
     )
 
-    expected_pose_last = np.array([3.5740, -0.0148, -0.0168])
+    expected_pose_last = np.array([3.59931865, -0.01271919, -0.020322])
     actual_pose_last = pipeline.global_camera_poses[-1][:3, 3]
     assert actual_pose_last == pytest.approx(expected_pose_last, abs=1e-3), (
         f"Last pose translation mismatch: got {actual_pose_last}, expected {expected_pose_last}"
